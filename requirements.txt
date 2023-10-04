@@ -1,0 +1,8 @@
+python-socketio
+yt-dlp
+tornado
+requests
+moviepy
+pygifsicle
+mutagen
+GitPython

@@ -1,0 +1,12 @@
+{
+    "maxLength": 600,
+    "maxPlaylistLength": 10,
+    "maxGifLength": 10,
+    "maxGifResolution": 480,
+    "maxLengthPlaylistVideo": 600,
+    "proxyListURL": false,
+    "url": "http://localhost:8888",
+    "bugcatcher": false,
+    "bugcatcherdsn": "YOURDSN",
+    "allowedorigins": []
+}
