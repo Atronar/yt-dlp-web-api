@@ -1,3 +1,5 @@
+![yt-dlp-web logo](logo.png)
+
 # yt-dlp-web-api
 
 ## This is a socketio based web api for using [yt-dlp](https://github.com/yt-dlp/yt-dlp). The ultimate goal of this library is to provide simple access to yt-dlp's functionality in order to create downloader websites
