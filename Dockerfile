@@ -9,4 +9,4 @@ ADD .conf.json /workspace
 WORKDIR /workspace
 RUN pip3 install -r requirements.txt
 RUN pip3 install --upgrade sentry-sdk
-CMD ["python3", "run.py"]
+CMD ["python3", "-u", "run.py"]
