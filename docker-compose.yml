@@ -1,6 +1,7 @@
 services:
-  yt-dlp-web:
+  yt-dlp-api:
     build: .
     ports: "8888:8888"
-volumes:
-  - ./downloads:/workspace/downloads
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py

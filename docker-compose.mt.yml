@@ -1,0 +1,34 @@
+# Note: you only need multiple services if you are running multithreaded, otherwise you can use the normal docker-compose
+services:
+  yda-rabbit:
+    image: docker.io/rabbitmq
+  yt-dlp-api:
+    build: .
+    ports: "8888:8888"
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py mt
+  yt-dlp-api-2:
+    build: .
+    ports: "8888:8889"
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py mt
+  yt-dlp-api-3:
+    build: .
+    ports: "8888:8890"
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py mt
+  yt-dlp-api-4:
+    build: .
+    ports: "8888:8891"
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py mt
+  yt-dlp-api-5:
+    build: .
+    ports: "8888:8892"
+    volumes:
+      - ./downloads:/workspace/downloads
+    command: python -u run.py mt
