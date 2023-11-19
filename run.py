@@ -89,7 +89,7 @@ async def toMP3(sid, data):
             # Tell the client there is no error
             res["error"] = False
             # Give the client the download link
-            res["link"] = conf["url"] + "/downloads/" + ftitle + ".mp3"
+            res["link"] = f'{conf["url"]}/downloads/{ftitle}.mp3'
             # Give the client the initial safe title just for display on the ui
             res["title"] = title
             # If there is id3 metadata apply this metadata to the file
@@ -139,7 +139,7 @@ async def playlist(sid, data):
                 with zipfile.ZipFile(os.path.join(conf["downloadsPath"], f'{ptitle}.zip'), 'a') as myzip:
                     myzip.write(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
             res["error"] = False
-            res["link"] = conf["url"] + "/downloads/" + ptitle + ".zip"
+            res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
             res["title"] = title
             await sio.emit("done", res, sid)
 
@@ -181,7 +181,7 @@ async def subtitles(sid, data):
             # Unfortunately at the moment this requires downloading the lowest quality stream as well, in the future some modification to yt-dlp might be necessary to avoid this
             ftitle = download(url, False, title, "subtitles", languageCode=languageCode, autoSub=autoSub)
             res["error"] = False
-            res["link"] = conf["url"] + "/downloads/" + ftitle + "." + languageCode + ".vtt"
+            res["link"] = f'{conf["url"]}/downloads/{ftitle}.{languageCode}.vtt'
             res["title"] = title
             await sio.emit("done", res, sid)
     except Exception as e:
@@ -220,7 +220,7 @@ async def clip(sid, data):
         title = makeSafe(info["title"])
         # If the directURL is set download directly
         if directURL != False:
-            ititle = title + "." + info["ext"]
+            ititle = f'{title}.{info["ext"]}'
             downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))      
         # Otherwise download the video through yt-dlp
         # If there's no format id just get the default video
@@ -243,7 +243,7 @@ async def clip(sid, data):
         extension = "mp4"
         if gif:
             extension = "gif"
-        res["link"] = conf["url"] + "/downloads/" + title + ".clipped." + extension
+        res["link"] = f'{conf["url"]}/downloads/{title}.clipped.{extension}'
         res["title"] = title
         await sio.emit("done", res, sid)
     except Exception as e:
@@ -300,7 +300,7 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
     }
     # Add extension to filepath if set
     if extension != False:
-        ydl_opts["outtmpl"] += "." + extension
+        ydl_opts["outtmpl"] += f".{extension}"
     # If this is audio setup for getting the best audio with the given codec
     if isAudio:
         ydl_opts['format'] = "bestaudio/best"
@@ -319,10 +319,10 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
             # Set up to write the subtitles to disk
             ydl_opts["writesubtitles"] = True
             # Further settings to write subtitles
-            ydl_opts['subtitle'] = '--write-sub --sub-lang ' + languageCode
+            ydl_opts['subtitle'] = f'--write-sub --sub-lang {languageCode}'
             # If the user wants to download auto subtitles set the subtitle field to do so
             if autoSub:
-                ydl_opts['subtitle'] = "--write-auto-sub " + ydl_opts["subtitle"]
+                ydl_opts['subtitle'] = f'--write-auto-sub {ydl_opts["subtitle"]}'
             ydl_opts['format'] = "worst"
         # Otherwise just download the best video+audio
         else:
@@ -337,15 +337,15 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
         else:
             ydl.download([url])
     # Construct and return the filepath for the downloaded file
-    res = title + "." + ukey
+    res = f"{title}.{ukey}"
     if extension != False:
-        res += "." + extension
+        res += f".{extension}"
     return res
 
 # Download file directly, with random proxy if set up
 def downloadDirect(url, filename):
     if conf["proxyListURL"] != False:
-        proxies = {'https': 'https://' + getProxy()}
+        proxies = {'https': f'https://{getProxy()}'}
         with requests.get(url, proxies=proxies, stream=True) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
