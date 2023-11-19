@@ -373,7 +373,16 @@ def getInfo(url, getSubtitles=False):
 # Make title file system safe
 # https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
 def makeSafe(filename):
-    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+    illegal_chars = "/\\?%*:|\"<>"
+    illegal_unprintable = (chr(c) for c in (*range(31), 127))
+    reserved_words = 'CON, CONIN$, CONOUT$, PRN, AUX, CLOCK$, NUL, \
+COM0, COM1, COM2, COM3, COM4, COM5, COM6, COM7, COM8, COM9, \
+LPT0, LPT1, LPT2, LPT3, LPT4, LPT5, LPT6, LPT7, LPT8, LPT9, \
+LST, KEYBD$, SCREEN$, $IDLE$, CONFIG$\
+'.split(', ')
+    if os.path.splitext(filename)[0].upper() in reserved_words: return f"__{filename}"
+    if set(filename)=={'.'}: return filename.replace('.','\uff0e')
+    return "".join(chr(ord(c)+65248) if c in illegal_chars else c for c in filename if c not in illegal_unprintable).rstrip()
 
 # Get random proxy from proxy list
 def getProxy():
