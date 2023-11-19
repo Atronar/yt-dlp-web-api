@@ -6,6 +6,7 @@
     "maxLengthPlaylistVideo": 600,
     "proxyListURL": false,
     "url": "http://localhost:8888",
+    "listeningPort": 8888,
     "bugcatcher": false,
     "bugcatcherdsn": "YOURDSN",
     "allowedorigins": []

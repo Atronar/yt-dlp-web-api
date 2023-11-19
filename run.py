@@ -416,7 +416,7 @@ async def main():
     await asyncio.sleep(0)
     # Generic tornado setup
     app = make_app()
-    app.listen(8888)
+    app.listen(conf["listeningPort"])
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
