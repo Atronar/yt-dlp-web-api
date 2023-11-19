@@ -262,6 +262,7 @@ async def getInfoEvent(sid, data):
             res["details"] = ""
             res["select"] = ""
         title = makeSafe(info["title"])
+        res["ext"] = info.get("ext", "")
         res["error"] = False
         res["title"] = title
         res["info"] = info
