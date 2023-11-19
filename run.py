@@ -324,9 +324,9 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
             if autoSub:
                 ydl_opts['subtitle'] = "--write-auto-sub " + ydl_opts["subtitle"]
             ydl_opts['format'] = "worst"
-        # Otherwise just download the best video
+        # Otherwise just download the best video+audio
         else:
-            ydl_opts['format'] = "bestvideo/best"
+            ydl_opts['format'] = None
     # If there is a proxy list url set up, set yt-dlp to use a random proxy
     if conf["proxyListURL"] != False:
         ydl_opts['proxy'] = getProxy()
