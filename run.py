@@ -391,10 +391,13 @@ async def refreshProxies():
 # Clean all files that are older than an hour out of downloads every hour
 async def clean():
     while True:
+        try:
         for f in os.listdir(conf["downloadsPath"]):
             fmt = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(conf["downloadsPath"], f)))
             if (datetime.datetime.now() - fmt).total_seconds() > 7200:
                 os.remove(os.path.join(conf["downloadsPath"], f))
+        except FileNotFoundError:
+            os.makedirs(conf["downloadsPath"])
         print("Cleaned!")
         await asyncio.sleep(3600)
 
