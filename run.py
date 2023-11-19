@@ -2,7 +2,7 @@ import socketio
 from yt_dlp import YoutubeDL
 import json
 import asyncio
-import tornado
+import tornado.web, tornado.escape
 import requests
 import os
 import random
@@ -411,19 +411,63 @@ async def refreshProxies():
 async def clean():
     while True:
         try:
-        for f in os.listdir(conf["downloadsPath"]):
-            fmt = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(conf["downloadsPath"], f)))
-            if (datetime.datetime.now() - fmt).total_seconds() > 7200:
-                os.remove(os.path.join(conf["downloadsPath"], f))
+            for f in os.listdir(conf["downloadsPath"]):
+                fmt = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(conf["downloadsPath"], f)))
+                if (datetime.datetime.now() - fmt).total_seconds() > 7200:
+                    os.remove(os.path.join(conf["downloadsPath"], f))
         except FileNotFoundError:
             os.makedirs(conf["downloadsPath"])
         print("Cleaned!")
         await asyncio.sleep(3600)
+        
+class RootPage(tornado.web.RequestHandler):
+    def get(self):
+        self.write(f'test {self.get_argument("arg")}')
+        
+class YtDlp(tornado.web.RequestHandler):
+    def get(self):
+        if url := self.get_argument("url", None):
+            info = self.getInfoEvent({"url": url})
+            self.write(info)
+        elif url := self.get_argument("download", None):
+            info = self.getInfoEvent({"url": url})
+            
+            audio = False
+            if self.get_argument("audioonly", 0)=="1":
+                audio = True
+            local_file_name = download(url, audio, '', None, extension=info.get("ext"))
+            
+            visible_file_name = os.path.extsep.join([makeSafe(info.get("title")), info.get("ext"), ])
+            self.set_header('Content-Type', 'application/octet-stream')
+            self.set_header('Content-Disposition', f'attachment; filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}')
+            chunk_size = 8192
+            with open(os.path.join(conf["downloadsPath"], local_file_name), 'rb') as f:
+                while (data := f.read(chunk_size)):
+                    self.write(data)
+            self.finish()
+        else:
+            self.send_error(404)
+        
+    def getInfoEvent(self, data: dict[str]) -> dict[str]:
+        res = {"error": True, "details": ""}
+        try:
+            url = data["url"]
+            info = getInfo(url)
+            res["title"] = makeSafe(info["title"])
+            res["ext"] = info.get("ext", "")
+            res["error"] = False
+            res["info"] = info
+            return res
+        except Exception as e:
+            res["details"] = str(e)
+            return res
 
 def make_app():
     return tornado.web.Application([
         (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': conf["downloadsPath"]}),
-        (r"/socket.io/", socketio.get_tornado_handler(sio))
+        (r"/socket.io/", socketio.get_tornado_handler(sio),),
+        (r"/", RootPage,),
+        (r"/yt-dlp", YtDlp,),
     ])
 
 # Main method
