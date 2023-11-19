@@ -65,8 +65,13 @@ or
 
 depending on whether you have docker compose or podman compose installed
 
-For more details please read the inline comments
+For an example configuration for Apache please refer to [apache.example.conf](/apache.example.conf) or [apache.example.mt.conf](/apache.example.mt.conf) for multithreading
+
+For more details please read the [docs](/docs/_build/markdown/index.md) or the inline comments
 
 Coming soon:
 
 Multi-node functionality
+
+# License
+This code is distributed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html)

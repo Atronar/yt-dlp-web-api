@@ -6,3 +6,5 @@ moviepy
 pygifsicle
 mutagen
 GitPython
+sphinx-markdown-builder
+kombu

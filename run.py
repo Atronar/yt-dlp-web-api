@@ -1,3 +1,6 @@
+"""
+
+"""
 import socketio
 from yt_dlp import YoutubeDL
 import json
@@ -9,35 +12,43 @@ import random
 import uuid
 import zipfile
 import datetime
+import sys
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.editor import VideoFileClip
 from pygifsicle import optimize
 from mutagen.easyid3 import EasyID3
 import sentry_sdk
-
+from sentry_sdk import capture_exception
 
 # TODO: auto-reload/reload on webhook using gitpython
 
 # README: functionality is described once per documentation in order to leave as
 # little clutter as possible
 
-# Global configuration variable
 conf: dict[str] = {}
+""" Global configuration variable """
 
-# Load configuratin at runtime
-with open(".conf.json", "r") as f:
+confpath = ".conf.json"
+"""Local path to json config"""
+
+if "docs" in str(os.getcwd()):
+    """Check if building docs, if so, change conf path"""
+    confpath = "../.conf.json"
+
+# Load configuration at runtime
+with open(confpath, "r") as f:
     conf = json.loads(f.read())
 
 # If using bugcatcher such as Glitchtip/Sentry set it up
 if conf["bugcatcher"]:
     sentry_sdk.init(conf["bugcatcherdsn"])
 
-# Function to download proxies from plain url, this is useful for me, but
-# if other people need to utilize a more complex method of downloading proxies
-# I recommend implementing it and doing a merge request
-def dlProxies():
+def dlProxies(path="proxies.txt"):
+    """
+    Function to download proxies from plain url to a given path. this is useful for me, but if other people need to utilize a more complex method of downloading proxies I recommend implementing it and doing a merge request
+    """
     r = requests.get(conf["proxyListURL"])
-    with open("proxies.txt", "w") as f:
+    with open(path, "w") as f:
         rlist = r.text.split("\n")
         rlistfixed = []
         for p in rlist[:-1]:
@@ -52,10 +63,12 @@ if conf["proxyListURL"] != False:
     if not os.path.exists("proxies.txt"):
         dlProxies()
 
-# Function to initialize response to client
-# Takes method and spinnerid
-# spinnerid is the id of the spinner object to remove on the ui, none is fine here
 def resInit(method, spinnerid) -> dict[str]:
+    """
+    Function to initialize response to client
+    Takes method and spinnerid
+    spinnerid is the id of the spinner object to remove on the ui, none is fine here
+    """
     res = {
         "method": method,
         "error": True,
@@ -64,18 +77,29 @@ def resInit(method, spinnerid) -> dict[str]:
     return res
 
 # create a Socket.IO server
-sio = socketio.AsyncServer(cors_allowed_origins=conf["allowedorigins"], async_mode="tornado")
+# This will either connect to a message queue or not depending on whether multithreading is specified
+sio = ""
+if "mt" in sys.argv:
+    mgr = socketio.KombuManager('amqp://yda-rabbit')
+    sio = socketio.AsyncServer(cors_allowed_origins=conf["allowedorigins"], async_mode="tornado", client_manager=mgr)
+else:
+    sio = socketio.AsyncServer(cors_allowed_origins=conf["allowedorigins"], async_mode="tornado")
 
-# Socketio event, takes the client id and a json payload
-# Converts link to mp3 file
+
 @sio.event
-async def toMP3(sid, data: dict[str]):
+async def toMP3(sid, data: dict[str], loop: int=0):
+    """
+    Socketio event, takes the client id, a json payload and a loop count for retries
+    Converts link to mp3 file
+    """
     # Initialize response, if spinnerid data doesn't exist it will just set it to none
     res = resInit("toMP3", data.get("spinnerid"))
     # Try/catch loop will send error message to client on error
     try:
         # Get video url from data
         url = data["url"]
+        if "list" in url:
+            raise ValueError("Method is for singular videos")
         # Get information about the video via yt-dlp to make future decisions
         info = getInfo(url)
         # Return an error if the video is longer than the configured maximum video length
@@ -104,14 +128,26 @@ async def toMP3(sid, data: dict[str]):
                 audio.save()
             # Emit result to client
             await sio.emit("done", res, sid)
+    except OSError as e:
+        capture_exception(e)
+        if loop > 0:
+            capture_exception(OSError("Retry unsuccessful"))
+            # Get text of error
+            res["details"] = str(e)
+            await sio.emit("done", res, sid)
+        else:
+            await toMP3(sid, data, loop=1)
     except Exception as e:
+        capture_exception(e)
         # Get text of error
         res["details"] = str(e)
         await sio.emit("done", res, sid)
-
-# Downloads playlist as a zip of MP3s
+    
 @sio.event
-async def playlist(sid, data: dict[str]):
+async def playlist(sid, data: dict[str], loop: int=0):
+    """
+    Downloads playlist as a zip of MP3s
+    """
     res = resInit("playlist", data.get("spinnerid"))
     try:
         purl = data["url"]
@@ -142,20 +178,32 @@ async def playlist(sid, data: dict[str]):
             res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
             res["title"] = title
             await sio.emit("done", res, sid)
-
+    except OSError as e:
+        capture_exception(e)
+        if loop > 0:
+            # Get text of error
+            res["details"] = str(e)
+            await sio.emit("done", res, sid)
+        else:
+            await playlist(sid, data, loop=1)
     except Exception as e:
+        capture_exception(e)
         res["details"] = str(e)
         await sio.emit("done", res, sid)
 
-# Two step event
-# 1. Get list of subtitles
-# 2. Download chosen subtitle file
 @sio.event
-async def subtitles(sid, data: dict[str]):
+async def subtitles(sid, data: dict[str], loop: int=0):
+    """
+    Two step event
+    1. Get list of subtitles
+    2. Download chosen subtitle file
+    """
     res = resInit("subtitles", data.get("spinnerid"))
     try:
         step = int(data["step"])
         url = data["url"]
+        if "list" in url:
+            raise ValueError("Method is for singular videos")
         # Step 1 of subtitles is to get the list of subtitles available and return them
         if step == 1:
             info = getInfo(url, getSubtitles=True)
@@ -184,16 +232,30 @@ async def subtitles(sid, data: dict[str]):
             res["link"] = f'{conf["url"]}/downloads/{ftitle}.{languageCode}.vtt'
             res["title"] = title
             await sio.emit("done", res, sid)
+    except OSError as e:
+        capture_exception(e)
+        if loop > 0:
+            capture_exception(OSError("Retry unsuccessful"))
+            # Get text of error
+            res["details"] = str(e)
+            await sio.emit("done", res, sid)
+        else:
+            await subtitles(sid, data, loop=1)
     except Exception as e:
+        capture_exception(e)
         res["details"] = str(e)
         await sio.emit("done", res, sid)
 
-# Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
 @sio.event
-async def clip(sid, data: dict[str]):
+async def clip(sid, data: dict[str], loop: int=0):
+    """
+    Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
+    """
     res = resInit("clip", data.get("spinnerid"))
     try:
         url = data["url"]
+        if "list" in url:
+            raise ValueError("Method is for singular videos")
         info = getInfo(url)
         # Check if directURL is in the data from the client
         # directURL defines a video url to download from directly instead of through yt-dlp
@@ -229,34 +291,87 @@ async def clip(sid, data: dict[str]):
                 ititle = download(url, False, title, "mp4", extension=info["ext"], format_id=format_id)
             else:
                 ititle = download(url, False, title, "mp4", extension=info["ext"])
+        cuuid = uuid.uuid4()
         if gif:
             # Clip video and then convert it to a gif
-            (VideoFileClip(os.path.join(conf["downloadsPath"], ititle))).subclip(timeA, timeB).write_gif(os.path.join(conf["downloadsPath"], f"{title}.{uuid.uuid4()}.clipped.gif"))
+            (VideoFileClip(os.path.join(conf["downloadsPath"], ititle))).subclip(timeA, timeB).write_gif(os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.gif"))
             # Optimize the gif
             optimize(os.path.join(conf["downloadsPath"], f"{title}.clipped.gif"))
         else:
             # Clip the video and return the mp4 of the clip
-            ffmpeg_extract_subclip(os.path.join(conf["downloadsPath"], ititle), timeA, timeB, targetname=os.path.join(conf["downloadsPath"], f"{title}.{uuid.uuid4()}.clipped.mp4"))
+            ffmpeg_extract_subclip(os.path.join(conf["downloadsPath"], ititle), timeA, timeB, targetname=os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.mp4"))
         res["error"] = False
         # Set the extension to use either to mp4 or gif depending on whether the user wanted a gif
         # The extension is just for creating the url for the clip
         extension = "mp4"
         if gif:
             extension = "gif"
-        res["link"] = f'{conf["url"]}/downloads/{title}.clipped.{extension}'
+        res["link"] = f'{conf["url"]}/downloads/{title}.{cuuid}.clipped.{extension}'
         res["title"] = title
         await sio.emit("done", res, sid)
+    except OSError as e:
+        capture_exception(e)
+        if loop > 0:
+            capture_exception(OSError("Retry unsuccessful"))
+            # Get text of error
+            res["details"] = str(e)
+            await sio.emit("done", res, sid)
+        else:
+            await clip(sid, data, loop=1)
     except Exception as e:
+        capture_exception(e)
         res["details"] = str(e)
         await sio.emit("done", res, sid)
 
-# Generic event to get all the information provided by yt-dlp for a given url
+@sio.event
+async def combine(sid, data: dict[str], loop: int=0):
+    """
+    Combine audio and video streams
+    """
+    res = resInit("combine", data.get("spinnerid"))
+    try:
+        curl = data["url"]
+        # Get video info
+        info = getInfo(curl)
+        # Create the video title from the file system safe title and a random uuid
+        # The uuid is to prevent two users from accidentally overwriting each other's files (very unlikely due to cleanup but still possible)
+        ptitle = f'{makeSafe(info["title"])}{uuid.uuid4()}'
+        # If the number of entries is larger than the configured maximum playlist length throw an error
+        if "list" in curl:
+            raise ValueError("This method is for a single video")
+        else:
+            # Check the length of the video, if it's too long throw an error
+            if info["duration"] > conf["maxLength"]:
+                raise ValueError("Video is longer than configured maximum length")
+            title = download(curl, False, ptitle, False, extension="mp4", format_id=data["format_id"], format_id_audio=data["format_id_audio"])
+            res["error"] = False
+            res["link"] = f'{conf["url"]}/downloads/{title}'
+            res["title"] = ptitle
+            await sio.emit("done", res, sid)
+    except OSError as e:
+        capture_exception(e)
+        if loop > 0:
+            # Get text of error
+            res["details"] = str(e)
+            await sio.emit("done", res, sid)
+        else:
+            await playlist(sid, data, loop=1)
+    except Exception as e:
+        capture_exception(e)
+        res["details"] = str(e)
+        await sio.emit("done", res, sid)
+
 @sio.event
 async def getInfoEvent(sid, data: dict[str]):
+    """
+        Generic event to get all the information provided by yt-dlp for a given url
+    """
     # Unlike other events we set the method here from the passed method in order to make this generic and flexible
     res = resInit(data["method"], data.get("spinnerid"))
     try:
         url = data["url"]
+        if "list" in url:
+            raise ValueError("Method is for singular videos")
         info = getInfo(url)
         if data["method"] == "streams":
             res["details"] = ""
@@ -268,12 +383,15 @@ async def getInfoEvent(sid, data: dict[str]):
         res["info"] = info
         await sio.emit("done", res, sid)
     except Exception as e:
+        capture_exception(e)
         res["details"] = str(e)
         await sio.emit("done", res, sid)
 
-# Get limits of server for display in UI
 @sio.event
 async def limits(sid, data: dict[str]):
+    """
+    Get set limits of server for display in UI
+    """
     res = resInit("limits", data.get("spinnerid"))
     try:
         limits = [
@@ -287,10 +405,10 @@ async def limits(sid, data: dict[str]):
         res["error"] = False
         await sio.emit("done", res, sid)
     except Exception as e:
+        capture_exception(e)
         res["details"] = str(e)
         await sio.emit("done", res, sid)
 
-# Generic download method
 def download(
         url,
         isAudio: bool, 
@@ -299,8 +417,12 @@ def download(
         languageCode: str|None = None, 
         autoSub: bool = False, 
         extension: str|bool = False, 
-        format_id: str|bool = False
+        format_id: str|bool = False,
+        format_id_audio: str|bool = False
     ) -> str:
+    """
+    Generic download method
+    """
     # Used to avoid filename conflicts
     ukey = str(uuid.uuid4())
     # Set the location/name of the output file
@@ -323,6 +445,9 @@ def download(
         # Check if there's a format id, if so set the download format to that format id
         if format_id != False:
             ydl_opts['format'] = format_id
+            if format_id_audio != False:
+                ydl_opts['format'] += f"+{format_id_audio}"
+                print(ydl_opts['format'])
         # Otherwise if we're downloading subtitles...
         elif codec == "subtitles":
             # Set up to write the subtitles to disk
@@ -353,6 +478,9 @@ def download(
 
 # Download file directly, with random proxy if set up
 def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
+    """
+    Download file directly, with random proxy if set up
+    """
     if conf["proxyListURL"] != False:
         proxies = {'https': f'https://{getProxy()}'}
         with requests.get(url, proxies=proxies, stream=True) as r:
@@ -370,6 +498,10 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
 # Generic method to get sanitized information about the given url, with a random proxy if set up
 # Try to write subtitles if requested
 def getInfo(url, getSubtitles: bool=False):
+    """
+    Generic method to get sanitized information about the given url, with a random proxy if set up
+    Try to write subtitles if requested
+    """
     info = {
         "writesubtitles": getSubtitles
     }
@@ -380,35 +512,35 @@ def getInfo(url, getSubtitles: bool=False):
         info = ydl.sanitize_info(info)
     return info
 
-# Make title file system safe
+def makeSafe(filename):
+    """
+    # Make title file system safe
 # https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
-def makeSafe(filename: str) -> str:
-    illegal_chars = "/\\?%*:|\"<>"
-    illegal_unprintable = (chr(c) for c in (*range(31), 127))
-    reserved_words = 'CON, CONIN$, CONOUT$, PRN, AUX, CLOCK$, NUL, \
-COM0, COM1, COM2, COM3, COM4, COM5, COM6, COM7, COM8, COM9, \
-LPT0, LPT1, LPT2, LPT3, LPT4, LPT5, LPT6, LPT7, LPT8, LPT9, \
-LST, KEYBD$, SCREEN$, $IDLE$, CONFIG$\
-'.split(', ')
-    if os.path.splitext(filename)[0].upper() in reserved_words: return f"__{filename}"
-    if set(filename)=={'.'}: return filename.replace('.','\uff0e')
-    return "".join(chr(ord(c)+65248) if c in illegal_chars else c for c in filename if c not in illegal_unprintable).rstrip()
+    """
+    return "".join([c for c in filename if c.isalpha() or c.isdigit() or c==' ']).rstrip()
 
 # Get random proxy from proxy list
 def getProxy() -> str:
+    """
+    Get random proxy from proxy list
+    """
     proxy = ""
     with open("proxies.txt", "r") as f:
         proxy = random.choice(f.read().split("\n"))
     return proxy
 
-# Refresh proxies every hour
 async def refreshProxies():
+    """
+    Refresh proxies every hour
+    """
     while True:
         dlProxies()
         await asyncio.sleep(3600)
 
-# Clean all files that are older than an hour out of downloads every hour
 async def clean():
+    """
+    Clean all files that are older than an hour out of downloads every hour
+    """
     while True:
         try:
         for f in os.listdir(conf["downloadsPath"]):
@@ -426,8 +558,10 @@ def make_app():
         (r"/socket.io/", socketio.get_tornado_handler(sio))
     ])
 
-# Main method
 async def main():
+    """
+    Main method
+    """
     # If proxies are configured set up the refresh proxies task
     if conf["proxyListURL"] != False:
         task = asyncio.create_task(refreshProxies())
