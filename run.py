@@ -22,7 +22,7 @@ import sentry_sdk
 # little clutter as possible
 
 # Global configuration variable
-conf = {}
+conf: dict[str] = {}
 
 # Load configuratin at runtime
 with open(".conf.json", "r") as f:
@@ -55,7 +55,7 @@ if conf["proxyListURL"] != False:
 # Function to initialize response to client
 # Takes method and spinnerid
 # spinnerid is the id of the spinner object to remove on the ui, none is fine here
-def resInit(method, spinnerid):
+def resInit(method, spinnerid) -> dict[str]:
     res = {
         "method": method,
         "error": True,
@@ -69,7 +69,7 @@ sio = socketio.AsyncServer(cors_allowed_origins=conf["allowedorigins"], async_mo
 # Socketio event, takes the client id and a json payload
 # Converts link to mp3 file
 @sio.event
-async def toMP3(sid, data):
+async def toMP3(sid, data: dict[str]):
     # Initialize response, if spinnerid data doesn't exist it will just set it to none
     res = resInit("toMP3", data.get("spinnerid"))
     # Try/catch loop will send error message to client on error
@@ -111,7 +111,7 @@ async def toMP3(sid, data):
 
 # Downloads playlist as a zip of MP3s
 @sio.event
-async def playlist(sid, data):
+async def playlist(sid, data: dict[str]):
     res = resInit("playlist", data.get("spinnerid"))
     try:
         purl = data["url"]
@@ -151,7 +151,7 @@ async def playlist(sid, data):
 # 1. Get list of subtitles
 # 2. Download chosen subtitle file
 @sio.event
-async def subtitles(sid, data):
+async def subtitles(sid, data: dict[str]):
     res = resInit("subtitles", data.get("spinnerid"))
     try:
         step = int(data["step"])
@@ -190,7 +190,7 @@ async def subtitles(sid, data):
 
 # Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
 @sio.event
-async def clip(sid, data):
+async def clip(sid, data: dict[str]):
     res = resInit("clip", data.get("spinnerid"))
     try:
         url = data["url"]
@@ -252,7 +252,7 @@ async def clip(sid, data):
 
 # Generic event to get all the information provided by yt-dlp for a given url
 @sio.event
-async def getInfoEvent(sid, data):
+async def getInfoEvent(sid, data: dict[str]):
     # Unlike other events we set the method here from the passed method in order to make this generic and flexible
     res = resInit(data["method"], data.get("spinnerid"))
     try:
@@ -273,7 +273,7 @@ async def getInfoEvent(sid, data):
 
 # Get limits of server for display in UI
 @sio.event
-async def limits(sid, data):
+async def limits(sid, data: dict[str]):
     res = resInit("limits", data.get("spinnerid"))
     try:
         limits = [
@@ -291,7 +291,16 @@ async def limits(sid, data):
         await sio.emit("done", res, sid)
 
 # Generic download method
-def download(url, isAudio, title, codec, languageCode=None, autoSub=False, extension=False, format_id=False):
+def download(
+        url,
+        isAudio: bool, 
+        title: str, 
+        codec: str, 
+        languageCode: str|None = None, 
+        autoSub: bool = False, 
+        extension: str|bool = False, 
+        format_id: str|bool = False
+    ) -> str:
     # Used to avoid filename conflicts
     ukey = str(uuid.uuid4())
     # Set the location/name of the output file
@@ -343,7 +352,7 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
     return res
 
 # Download file directly, with random proxy if set up
-def downloadDirect(url, filename):
+def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
     if conf["proxyListURL"] != False:
         proxies = {'https': f'https://{getProxy()}'}
         with requests.get(url, proxies=proxies, stream=True) as r:
@@ -360,7 +369,7 @@ def downloadDirect(url, filename):
 
 # Generic method to get sanitized information about the given url, with a random proxy if set up
 # Try to write subtitles if requested
-def getInfo(url, getSubtitles=False):
+def getInfo(url, getSubtitles: bool=False):
     info = {
         "writesubtitles": getSubtitles
     }
@@ -373,7 +382,7 @@ def getInfo(url, getSubtitles=False):
 
 # Make title file system safe
 # https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
-def makeSafe(filename):
+def makeSafe(filename: str) -> str:
     illegal_chars = "/\\?%*:|\"<>"
     illegal_unprintable = (chr(c) for c in (*range(31), 127))
     reserved_words = 'CON, CONIN$, CONOUT$, PRN, AUX, CLOCK$, NUL, \
@@ -386,7 +395,7 @@ LST, KEYBD$, SCREEN$, $IDLE$, CONFIG$\
     return "".join(chr(ord(c)+65248) if c in illegal_chars else c for c in filename if c not in illegal_unprintable).rstrip()
 
 # Get random proxy from proxy list
-def getProxy():
+def getProxy() -> str:
     proxy = ""
     with open("proxies.txt", "r") as f:
         proxy = random.choice(f.read().split("\n"))
