@@ -5,6 +5,8 @@ lib/
 lib64/
 share/
 downloads/
+.vs/
+obj/
 eid3.js
 eid3fieldspruned.txt
 eid3listtojs.py
@@ -17,3 +19,5 @@ subex.json
 vexample_fixed.json
 vexample.json
 .conf.json
+*.pyproj
+*.pyproj.user
