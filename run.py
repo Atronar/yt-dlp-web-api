@@ -97,7 +97,7 @@ async def toMP3(sid, data):
                 # We use EasyID3 here as, well, it's easy, if you need to add more fields
                 # please read the mutagen documentation for this here:
                 # https://mutagen.readthedocs.io/en/latest/user/id3.html
-                audio = EasyID3("downloads/" + ftitle + ".mp3")
+                audio = EasyID3(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
                 for key, value in data["id3"].items():
                     if value != "" and value != None:
                         audio[key] = value
@@ -136,8 +136,8 @@ async def playlist(sid, data):
                 vurl = "https://www.youtube.com/watch?v=" + vid
                 title = makeSafe(v["title"])
                 ftitle = download(vurl, True, title, "mp3")
-                with zipfile.ZipFile("downloads/" + ptitle + '.zip', 'a') as myzip:
-                    myzip.write("downloads/" + ftitle + ".mp3")
+                with zipfile.ZipFile(os.path.join(conf["downloadsPath"], f'{ptitle}.zip'), 'a') as myzip:
+                    myzip.write(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
             res["error"] = False
             res["link"] = conf["url"] + "/downloads/" + ptitle + ".zip"
             res["title"] = title
@@ -221,7 +221,7 @@ async def clip(sid, data):
         # If the directURL is set download directly
         if directURL != False:
             ititle = title + "." + info["ext"]
-            downloadDirect(directURL, "downloads/" + ititle)      
+            downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))      
         # Otherwise download the video through yt-dlp
         # If there's no format id just get the default video
         else:
@@ -231,12 +231,12 @@ async def clip(sid, data):
                 ititle = download(url, False, title, "mp4", extension=info["ext"])
         if gif:
             # Clip video and then convert it to a gif
-            (VideoFileClip("downloads/" + ititle)).subclip(timeA, timeB).write_gif("downloads/" + title + "." + str(uuid.uuid4()) + ".clipped.gif")
+            (VideoFileClip(os.path.join(conf["downloadsPath"], ititle))).subclip(timeA, timeB).write_gif(os.path.join(conf["downloadsPath"], f"{title}.{uuid.uuid4()}.clipped.gif"))
             # Optimize the gif
-            optimize("downloads/" + title + ".clipped.gif")
+            optimize(os.path.join(conf["downloadsPath"], f"{title}.clipped.gif"))
         else:
             # Clip the video and return the mp4 of the clip
-            ffmpeg_extract_subclip("downloads/" + ititle, timeA, timeB, targetname="downloads/" + title + "." + str(uuid.uuid4()) + ".clipped.mp4")
+            ffmpeg_extract_subclip(os.path.join(conf["downloadsPath"], ititle), timeA, timeB, targetname=os.path.join(conf["downloadsPath"], f"{title}.{uuid.uuid4()}.clipped.mp4"))
         res["error"] = False
         # Set the extension to use either to mp4 or gif depending on whether the user wanted a gif
         # The extension is just for creating the url for the clip
@@ -295,7 +295,7 @@ def download(url, isAudio, title, codec, languageCode=None, autoSub=False, exten
     ukey = str(uuid.uuid4())
     # Set the location/name of the output file
     ydl_opts = {
-        'outtmpl': 'downloads/' + title + "." + ukey
+        'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
     }
     # Add extension to filepath if set
     if extension != False:
@@ -391,16 +391,16 @@ async def refreshProxies():
 # Clean all files that are older than an hour out of downloads every hour
 async def clean():
     while True:
-        for f in os.listdir("./downloads"):
-            fmt = datetime.datetime.fromtimestamp(os.path.getmtime('downloads/' + f))
+        for f in os.listdir(conf["downloadsPath"]):
+            fmt = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(conf["downloadsPath"], f)))
             if (datetime.datetime.now() - fmt).total_seconds() > 7200:
-                os.remove("downloads/" + f)
+                os.remove(os.path.join(conf["downloadsPath"], f))
         print("Cleaned!")
         await asyncio.sleep(3600)
 
 def make_app():
     return tornado.web.Application([
-        (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': "./downloads"}),
+        (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': conf["downloadsPath"]}),
         (r"/socket.io/", socketio.get_tornado_handler(sio))
     ])
 

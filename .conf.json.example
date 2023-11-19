@@ -9,5 +9,6 @@
     "listeningPort": 8888,
     "bugcatcher": false,
     "bugcatcherdsn": "YOURDSN",
-    "allowedorigins": []
+    "allowedorigins": [],
+    "downloadsPath": "T:/TEMP/yt-dlp-srv"
 }
