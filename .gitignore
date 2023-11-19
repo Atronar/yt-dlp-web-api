@@ -22,3 +22,4 @@ vexample.json
 __pycache__/
 *.pyproj
 *.pyproj.user
+*.bak
