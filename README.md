@@ -4,6 +4,8 @@
 
 ## This is a socketio based web api for using [yt-dlp](https://github.com/yt-dlp/yt-dlp). The ultimate goal of this library is to provide simple access to yt-dlp's functionality in order to create downloader websites
 
+Original repo of this <ins>fork</ins>: [https://gitlab.com/wizdevgirl1/yt-dlp-web-api](https://gitlab.com/wizdevgirl1/yt-dlp-web-api)
+
 ### See also: [https://gitlab.com/wizdevgirl1/yt-dlp-web-ui](https://gitlab.com/wizdevgirl1/yt-dlp-web-ui) for a premade front end
 
 Requirements:
