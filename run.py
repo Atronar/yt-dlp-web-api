@@ -368,14 +368,14 @@ async def limits(sid, data: dict[str]):
     """
     res = resInit("limits", data.get("spinnerid"))
     try:
-        limits = [
+        _limits = [
             "maxLength",
             "maxPlaylistLength",
             "maxGifLength",
             "maxGifResolution",
             "maxLengthPlaylistVideo"
         ]
-        res["limits"] = [{"limitid": limit, "limitvalue": conf[limit]} for limit in limits]
+        res["limits"] = [{"limitid": limit, "limitvalue": conf[limit]} for limit in _limits]
         res["error"] = False
         #await sio.emit("done", res, sid)
     except Exception as e:
