@@ -1,7 +1,6 @@
 """
 
 """
-import socketio
 from yt_dlp import YoutubeDL
 import json
 import asyncio
@@ -74,11 +73,8 @@ def resInit(method, spinnerid) -> dict[str]:
     }
     return res
 
-# create a Socket.IO server
-sio = socketio.AsyncServer(cors_allowed_origins=conf["allowedorigins"], async_mode="tornado")
 
-
-@sio.event
+#@sio.event
 async def toMP3(sid, data: dict[str], loop: int=0):
     """
     Socketio event, takes the client id, a json payload and a loop count for retries
@@ -119,20 +115,20 @@ async def toMP3(sid, data: dict[str], loop: int=0):
                         audio[key] = value
                 audio.save()
             # Emit result to client
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
     except OSError as e:
         if loop > 0:
             # Get text of error
             res["details"] = str(e)
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         else:
             await toMP3(sid, data, loop=1)
     except Exception as e:
         # Get text of error
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
     
-@sio.event
+#@sio.event
 async def playlist(sid, data: dict[str], loop: int=0):
     """
     Downloads playlist as a zip of MP3s
@@ -166,19 +162,19 @@ async def playlist(sid, data: dict[str], loop: int=0):
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
             res["title"] = title
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
     except OSError as e:
         if loop > 0:
             # Get text of error
             res["details"] = str(e)
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         else:
             await playlist(sid, data, loop=1)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
-@sio.event
+#@sio.event
 async def subtitles(sid, data: dict[str], loop: int=0):
     """
     Two step event
@@ -203,7 +199,7 @@ async def subtitles(sid, data: dict[str], loop: int=0):
             res["step"] = 0
             # Again details doesn't need a value it just needs to exist to let the front end know to populate the details column with a select defined by the list provided by select
             res["details"] = ""
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         # Step 2 of subtitles is to download the subtitles to the server and provide that link to the user
         elif step == 2:
             # Get the selected subtitles by language code
@@ -218,19 +214,19 @@ async def subtitles(sid, data: dict[str], loop: int=0):
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{ftitle}.{languageCode}.vtt'
             res["title"] = title
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
     except OSError as e:
         if loop > 0:
             # Get text of error
             res["details"] = str(e)
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         else:
             await subtitles(sid, data, loop=1)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
-@sio.event
+#@sio.event
 async def clip(sid, data: dict[str], loop: int=0):
     """
     Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
@@ -292,19 +288,19 @@ async def clip(sid, data: dict[str], loop: int=0):
             extension = "gif"
         res["link"] = f'{conf["url"]}/downloads/{title}.{cuuid}.clipped.{extension}'
         res["title"] = title
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
     except OSError as e:
         if loop > 0:
             # Get text of error
             res["details"] = str(e)
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         else:
             await clip(sid, data, loop=1)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
-@sio.event
+#@sio.event
 async def combine(sid, data: dict[str], loop: int=0):
     """
     Combine audio and video streams
@@ -328,19 +324,19 @@ async def combine(sid, data: dict[str], loop: int=0):
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{title}'
             res["title"] = ptitle
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
     except OSError as e:
         if loop > 0:
             # Get text of error
             res["details"] = str(e)
-            await sio.emit("done", res, sid)
+            #await sio.emit("done", res, sid)
         else:
             await playlist(sid, data, loop=1)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
-@sio.event
+#@sio.event
 async def getInfoEvent(sid, data: dict[str]):
     """
         Generic event to get all the information provided by yt-dlp for a given url
@@ -360,12 +356,12 @@ async def getInfoEvent(sid, data: dict[str]):
         res["error"] = False
         res["title"] = title
         res["info"] = info
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
-@sio.event
+#@sio.event
 async def limits(sid, data: dict[str]):
     """
     Get set limits of server for display in UI
@@ -381,10 +377,10 @@ async def limits(sid, data: dict[str]):
         ]
         res["limits"] = [{"limitid": limit, "limitvalue": conf[limit]} for limit in limits]
         res["error"] = False
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
     except Exception as e:
         res["details"] = str(e)
-        await sio.emit("done", res, sid)
+        #await sio.emit("done", res, sid)
 
 def download(
         url,
@@ -583,7 +579,6 @@ class YtDlp(tornado.web.RequestHandler):
 def make_app():
     return tornado.web.Application([
         (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': conf["downloadsPath"]}),
-        (r"/socket.io/", socketio.get_tornado_handler(sio),),
         (r"/", RootPage,),
         (r"/yt-dlp", YtDlp,),
     ])
