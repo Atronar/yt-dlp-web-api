@@ -1,6 +1,7 @@
 """
 
 """
+from typing import Any, Literal
 from yt_dlp import YoutubeDL
 import json
 import asyncio
@@ -22,7 +23,7 @@ import sentry_sdk
 # README: functionality is described once per documentation in order to leave as
 # little clutter as possible
 
-conf: dict[str] = {}
+conf: dict[str, Any] = {}
 """ Global configuration variable """
 
 confpath = ".conf.json"
@@ -60,7 +61,7 @@ if conf["proxyListURL"] != False:
     if not os.path.exists("proxies.txt"):
         dlProxies()
 
-def resInit(method, spinnerid) -> dict[str]:
+def resInit(method, spinnerid) -> dict[str, Any]:
     """
     Function to initialize response to client
     Takes method and spinnerid
@@ -75,7 +76,7 @@ def resInit(method, spinnerid) -> dict[str]:
 
 
 #@sio.event
-async def toMP3(sid, data: dict[str], loop: int=0):
+async def toMP3(sid, data: dict[str, Any], loop: int=0):
     """
     Socketio event, takes the client id, a json payload and a loop count for retries
     Converts link to mp3 file
@@ -129,7 +130,7 @@ async def toMP3(sid, data: dict[str], loop: int=0):
         #await sio.emit("done", res, sid)
     
 #@sio.event
-async def playlist(sid, data: dict[str], loop: int=0):
+async def playlist(sid, data: dict[str, Any], loop: int=0):
     """
     Downloads playlist as a zip of MP3s
     """
@@ -175,7 +176,7 @@ async def playlist(sid, data: dict[str], loop: int=0):
         #await sio.emit("done", res, sid)
 
 #@sio.event
-async def subtitles(sid, data: dict[str], loop: int=0):
+async def subtitles(sid, data: dict[str, Any], loop: int=0):
     """
     Two step event
     1. Get list of subtitles
@@ -227,7 +228,7 @@ async def subtitles(sid, data: dict[str], loop: int=0):
         #await sio.emit("done", res, sid)
 
 #@sio.event
-async def clip(sid, data: dict[str], loop: int=0):
+async def clip(sid, data: dict[str, Any], loop: int=0):
     """
     Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
     """
@@ -239,7 +240,7 @@ async def clip(sid, data: dict[str], loop: int=0):
         info = getInfo(url)
         # Check if directURL is in the data from the client
         # directURL defines a video url to download from directly instead of through yt-dlp
-        directURL = False
+        directURL: Literal[False]|str|bytes = False
         if "directURL" in data.keys():
             directURL = data["directURL"]
         # Check if user wants to create a gif
@@ -247,7 +248,7 @@ async def clip(sid, data: dict[str], loop: int=0):
         if "gif" in data.keys():
             gif = True
         # Get the format id the user wants for downloading a given stream from a given video
-        format_id = False
+        format_id: str|Literal[False] = False
         if "format_id" in data.keys():
             format_id = data["format_id"]
         if info["duration"] > conf["maxLength"]:
@@ -301,7 +302,7 @@ async def clip(sid, data: dict[str], loop: int=0):
         #await sio.emit("done", res, sid)
 
 #@sio.event
-async def combine(sid, data: dict[str], loop: int=0):
+async def combine(sid, data: dict[str, Any], loop: int=0):
     """
     Combine audio and video streams
     """
@@ -337,7 +338,7 @@ async def combine(sid, data: dict[str], loop: int=0):
         #await sio.emit("done", res, sid)
 
 #@sio.event
-async def getInfoEvent(sid, data: dict[str]):
+async def getInfoEvent(sid, data: dict[str, Any]):
     """
         Generic event to get all the information provided by yt-dlp for a given url
     """
@@ -362,7 +363,7 @@ async def getInfoEvent(sid, data: dict[str]):
         #await sio.emit("done", res, sid)
 
 #@sio.event
-async def limits(sid, data: dict[str]):
+async def limits(sid, data: dict[str, Any]):
     """
     Get set limits of server for display in UI
     """
@@ -386,12 +387,12 @@ def download(
         url,
         isAudio: bool, 
         title: str, 
-        codec: str, 
+        codec: str|Literal[False], 
         languageCode: str|None = None, 
         autoSub: bool = False, 
-        extension: str|bool = False, 
-        format_id: str|bool = False,
-        format_id_audio: str|bool = False
+        extension: str|Literal[False] = False, 
+        format_id: str|Literal[False] = False,
+        format_id_audio: str|Literal[False] = False
     ) -> str:
     """
     Generic download method
@@ -399,7 +400,7 @@ def download(
     # Used to avoid filename conflicts
     ukey = str(uuid.uuid4())
     # Set the location/name of the output file
-    ydl_opts = {
+    ydl_opts: dict[str, Any] = {
         'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
     }
     # Add extension to filepath if set
@@ -470,12 +471,12 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
 
 # Generic method to get sanitized information about the given url, with a random proxy if set up
 # Try to write subtitles if requested
-def getInfo(url, getSubtitles: bool=False):
+def getInfo(url, getSubtitles: bool=False) -> dict[str, Any]:
     """
     Generic method to get sanitized information about the given url, with a random proxy if set up
     Try to write subtitles if requested
     """
-    info = {
+    info: dict[str, Any] = {
         "writesubtitles": getSubtitles
     }
     if conf["proxyListURL"] != False:
@@ -562,7 +563,7 @@ class YtDlp(tornado.web.RequestHandler):
         else:
             self.send_error(404)
         
-    def getInfoEvent(self, data: dict[str]) -> dict[str]:
+    def getInfoEvent(self, data: dict[str, Any]) -> dict[str, Any]:
         res = {"error": True, "details": ""}
         try:
             url = data["url"]
