@@ -21,3 +21,5 @@ vexample.json
 .conf.json
 *.pyproj
 *.pyproj.user
+*.bak
+*.sln
