@@ -28,7 +28,7 @@ conf: dict[str] = {}
 confpath = ".conf.json"
 """Local path to json config"""
 
-if "docs" in str(os.getcwd()):
+if "docs" in os.getcwd():
     """Check if building docs, if so, change conf path"""
     confpath = "../.conf.json"
 
