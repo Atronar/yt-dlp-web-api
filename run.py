@@ -577,6 +577,14 @@ class YtDlp(tornado.web.RequestHandler):
             res["details"] = str(e)
             return res
 
+    def post(self):
+        try:    
+            data = json.loads(self.request.body)
+            print(data)
+        except Exception as e:
+            print(str(e))
+            self.send_error(400)    
+
 def make_app():
     return tornado.web.Application([
         (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': conf["downloadsPath"]}),
