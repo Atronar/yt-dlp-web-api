@@ -33,7 +33,7 @@ if "docs" in str(os.getcwd()):
     confpath = "../.conf.json"
 
 # Load configuration at runtime
-with open(confpath, "r") as f:
+with open(confpath, "r", encoding="utf-8") as f:
     conf = json.loads(f.read())
 
 # If using bugcatcher such as Glitchtip/Sentry set it up
@@ -44,8 +44,8 @@ def dlProxies(path="proxies.txt"):
     """
     Function to download proxies from plain url to a given path. this is useful for me, but if other people need to utilize a more complex method of downloading proxies I recommend implementing it and doing a merge request
     """
-    r = requests.get(conf["proxyListURL"])
-    with open(path, "w") as f:
+    r = requests.get(conf["proxyListURL"], timeout=30)
+    with open(path, "w", encoding="utf-8") as f:
         rlist = r.text.split("\n")
         rlistfixed = []
         for p in rlist[:-1]:
@@ -456,13 +456,13 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
     """
     if conf["proxyListURL"] != False:
         proxies = {'https': f'https://{getProxy()}'}
-        with requests.get(url, proxies=proxies, stream=True) as r:
+        with requests.get(url, proxies=proxies, stream=True, timeout=30) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192): 
                     f.write(chunk)
     else:
-        with requests.get(url, stream=True) as r:
+        with requests.get(url, stream=True, timeout=30) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192): 
@@ -507,7 +507,7 @@ def getProxy() -> str:
     Get random proxy from proxy list
     """
     proxy = ""
-    with open("proxies.txt", "r") as f:
+    with open("proxies.txt", "r", encoding="utg-8") as f:
         proxy = random.choice(f.read().split("\n"))
     return proxy
 
