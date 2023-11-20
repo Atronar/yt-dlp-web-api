@@ -19,6 +19,7 @@ subex.json
 vexample_fixed.json
 vexample.json
 .conf.json
+__pycache__/
 *.pyproj
 *.pyproj.user
 *.bak
