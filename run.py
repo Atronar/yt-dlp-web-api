@@ -2,16 +2,17 @@
 
 """
 from typing import Any, Literal
-from yt_dlp import YoutubeDL
 import json
 import asyncio
-import tornado.web, tornado.escape
-import requests
 import os
 import random
 import uuid
 import zipfile
 import datetime
+from yt_dlp import YoutubeDL
+import tornado.web
+import tornado.escape
+import requests
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from moviepy.editor import VideoFileClip
 from pygifsicle import optimize
@@ -30,12 +31,12 @@ confpath = ".conf.json"
 """Local path to json config"""
 
 if "docs" in os.getcwd():
-    """Check if building docs, if so, change conf path"""
+    # Check if building docs, if so, change conf path
     confpath = "../.conf.json"
 
 # Load configuration at runtime
-with open(confpath, "r", encoding="utf-8") as f:
-    conf = json.loads(f.read())
+with open(confpath, "r", encoding="utf-8") as conffile:
+    conf = json.loads(conffile.read())
 
 # If using bugcatcher such as Glitchtip/Sentry set it up
 if conf["bugcatcher"]:
@@ -43,7 +44,9 @@ if conf["bugcatcher"]:
 
 def dlProxies(path="proxies.txt"):
     """
-    Function to download proxies from plain url to a given path. this is useful for me, but if other people need to utilize a more complex method of downloading proxies I recommend implementing it and doing a merge request
+    Function to download proxies from plain url to a given path.
+    this is useful for me, but if other people need to utilize a more complex method
+    of downloading proxies I recommend implementing it and doing a merge request
     """
     r = requests.get(conf["proxyListURL"], timeout=30)
     with open(path, "w", encoding="utf-8") as f:
@@ -51,13 +54,13 @@ def dlProxies(path="proxies.txt"):
         rlistfixed = []
         for p in rlist[:-1]:
             pl = p.replace("\n", "").replace("\r", "").split(":")
-            proxy = "{0}:{1}@{2}:{3}".format(pl[2], pl[3], pl[0], pl[1])
+            proxy = f"{pl[2]}:{pl[3]}@{pl[0]}:{pl[1]}"
             rlistfixed.append(proxy)
         f.write("\n".join(rlistfixed))
     print("Proxies refreshed!")
 
 # If using proxy list url and there's no proxies file, download proxies at runtime
-if conf["proxyListURL"] != False:
+if conf["proxyListURL"] is not False:
     if not os.path.exists("proxies.txt"):
         dlProxies()
 
@@ -106,13 +109,13 @@ async def toMP3(sid, data: dict[str, Any], loop: int=0):
             # Give the client the initial safe title just for display on the ui
             res["title"] = title
             # If there is id3 metadata apply this metadata to the file
-            if data["id3"] != None:
+            if data["id3"] is not None:
                 # We use EasyID3 here as, well, it's easy, if you need to add more fields
                 # please read the mutagen documentation for this here:
                 # https://mutagen.readthedocs.io/en/latest/user/id3.html
                 audio = EasyID3(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
                 for key, value in data["id3"].items():
-                    if value != "" and value != None:
+                    if value not in ("", None):
                         audio[key] = value
                 audio.save()
             # Emit result to client
@@ -140,25 +143,32 @@ async def playlist(sid, data: dict[str, Any], loop: int=0):
         # Get playlist info
         info = getInfo(purl)
         # Create playlist title from the file system safe title and a random uuid
-        # The uuid is to prevent two users from accidentally overwriting each other's files (very unlikely due to cleanup but still possible)
+        # The uuid is to prevent two users from accidentally overwriting each other's files
+        # (very unlikely due to cleanup but still possible)
         ptitle = makeSafe(info["title"]) + str(uuid.uuid4())
-        # If the number of entries is larger than the configured maximum playlist length throw an error
+        # If the number of entries is larger than the configured maximum
+        # playlist length throw an error
         if len(info["entries"]) > conf["maxPlaylistLength"]:
             raise ValueError("Playlist is longer than configured maximum length")
         else:
-            # Check the length of all videos in the playlist, if any are longer than the configured maximum
+            # Check the length of all videos in the playlist,
+            # if any are longer than the configured maximum
             # length for playlist videos throw an error
             for v in info["entries"]:
                 if v["duration"] > conf["maxLengthPlaylistVideo"]:
                     raise ValueError("Video in playlist is longer than configured maximum length")
-            # Iterate through all videos on the playlist, download each one as an MP3 and then write it to the playlist zip file
+            # Iterate through all videos on the playlist,
+            # download each one as an MP3 and then write it to the playlist zip file
             for v in info["entries"]:
                 #TODO: make generic
                 vid = v["id"]
                 vurl = "https://www.youtube.com/watch?v=" + vid
                 title = makeSafe(v["title"])
                 ftitle = download(vurl, True, title, "mp3")
-                with zipfile.ZipFile(os.path.join(conf["downloadsPath"], f'{ptitle}.zip'), 'a') as myzip:
+                with zipfile.ZipFile(
+                    os.path.join(conf["downloadsPath"], f'{ptitle}.zip'),
+                    'a'
+                ) as myzip:
                     myzip.write(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
@@ -196,12 +206,17 @@ async def subtitles(sid, data: dict[str, Any], loop: int=0):
             res["title"] = title
             # List of subtitle keys for picking subtitles
             res["select"] = list(info["subtitles"].keys())
-            # Step for front end use, the value here doesn't really matter, the variable just has to exist to tell the ui to move to step 2 when the method is called again
+            # Step for front end use, the value here doesn't really matter,
+            # the variable just has to exist to tell the ui to move to step 2
+            # when the method is called again
             res["step"] = 0
-            # Again details doesn't need a value it just needs to exist to let the front end know to populate the details column with a select defined by the list provided by select
+            # Again details doesn't need a value it just needs to exist to let
+            # the front end know to populate the details column with a select
+            # defined by the list provided by select
             res["details"] = ""
             #await sio.emit("done", res, sid)
-        # Step 2 of subtitles is to download the subtitles to the server and provide that link to the user
+        # Step 2 of subtitles is to download the subtitles to the server
+        # and provide that link to the user
         elif step == 2:
             # Get the selected subtitles by language code
             languageCode = data["languageCode"]
@@ -210,8 +225,16 @@ async def subtitles(sid, data: dict[str, Any], loop: int=0):
             info = getInfo(url)
             title = makeSafe(info["title"])
             # Download the subtitles
-            # Unfortunately at the moment this requires downloading the lowest quality stream as well, in the future some modification to yt-dlp might be necessary to avoid this
-            ftitle = download(url, False, title, "subtitles", languageCode=languageCode, autoSub=autoSub)
+            # Unfortunately at the moment this requires downloading the lowest quality stream
+            # as well, in the future some modification to yt-dlp might be necessary to avoid this
+            ftitle = download(
+                url,
+                False,
+                title,
+                "subtitles",
+                languageCode=languageCode,
+                autoSub=autoSub
+            )
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{ftitle}.{languageCode}.vtt'
             res["title"] = title
@@ -226,11 +249,13 @@ async def subtitles(sid, data: dict[str, Any], loop: int=0):
     except Exception as e:
         res["details"] = str(e)
         #await sio.emit("done", res, sid)
+    return res
 
 #@sio.event
 async def clip(sid, data: dict[str, Any], loop: int=0):
     """
-    Event to clip a given stream and return the clip to the user, the user can optionally convert this clip into a gif
+    Event to clip a given stream and return the clip to the user,
+    the user can optionally convert this clip into a gif
     """
     res = resInit("clip", data.get("spinnerid"))
     try:
@@ -257,30 +282,51 @@ async def clip(sid, data: dict[str, Any], loop: int=0):
         timeA = int(data["timeA"])
         timeB = int(data["timeB"])
         # If we're making a gif make sure the clip is not longer than the maximum gif length
-        # Please be careful with gif lengths, if you set this too high you may end up with huge gifs hogging the server
+        # Please be careful with gif lengths,
+        # if you set this too high you may end up with huge gifs hogging the server
         if gif and ((timeB - timeA) > conf["maxGifLength"]):
             raise ValueError("Range is too large for gif")
         title = makeSafe(info["title"])
         # If the directURL is set download directly
-        if directURL != False:
+        if directURL is not False:
             ititle = f'{title}.{info["ext"]}'
             downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))
         # Otherwise download the video through yt-dlp
         # If there's no format id just get the default video
         else:
-            if format_id != False:
-                ititle = download(url, False, title, "mp4", extension=info["ext"], format_id=format_id)
+            if format_id is not False:
+                ititle = download(
+                    url,
+                    False,
+                    title,
+                    "mp4",
+                    extension=info["ext"],
+                    format_id=format_id
+                )
             else:
-                ititle = download(url, False, title, "mp4", extension=info["ext"])
+                ititle = download(
+                    url,
+                    False,
+                    title,
+                    "mp4",
+                    extension=info["ext"]
+                )
         cuuid = uuid.uuid4()
         if gif:
             # Clip video and then convert it to a gif
-            (VideoFileClip(os.path.join(conf["downloadsPath"], ititle))).subclip(timeA, timeB).write_gif(os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.gif"))
+            ((VideoFileClip(os.path.join(conf["downloadsPath"], ititle)))
+                .subclip(timeA, timeB)
+                .write_gif(os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.gif")))
             # Optimize the gif
             optimize(os.path.join(conf["downloadsPath"], f"{title}.clipped.gif"))
         else:
             # Clip the video and return the mp4 of the clip
-            ffmpeg_extract_subclip(os.path.join(conf["downloadsPath"], ititle), timeA, timeB, targetname=os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.mp4"))
+            ffmpeg_extract_subclip(
+                os.path.join(conf["downloadsPath"], ititle),
+                timeA,
+                timeB,
+                targetname=os.path.join(conf["downloadsPath"], f"{title}.{cuuid}.clipped.mp4")
+            )
         res["error"] = False
         # Set the extension to use either to mp4 or gif depending on whether the user wanted a gif
         # The extension is just for creating the url for the clip
@@ -312,7 +358,8 @@ async def combine(sid, data: dict[str, Any], loop: int=0):
         # Get video info
         info = getInfo(curl)
         # Create the video title from the file system safe title and a random uuid
-        # The uuid is to prevent two users from accidentally overwriting each other's files (very unlikely due to cleanup but still possible)
+        # The uuid is to prevent two users from accidentally overwriting each other's files
+        # (very unlikely due to cleanup but still possible)
         ptitle = f'{makeSafe(info["title"])}{uuid.uuid4()}'
         # If the number of entries is larger than the configured maximum playlist length throw an error
         if "list" in curl:
@@ -321,7 +368,15 @@ async def combine(sid, data: dict[str, Any], loop: int=0):
             # Check the length of the video, if it's too long throw an error
             if info["duration"] > conf["maxLength"]:
                 raise ValueError("Video is longer than configured maximum length")
-            title = download(curl, False, ptitle, False, extension="mp4", format_id=data["format_id"], format_id_audio=data["format_id_audio"])
+            title = download(
+                curl,
+                False,
+                ptitle,
+                False,
+                extension="mp4",
+                format_id=data["format_id"],
+                format_id_audio=data["format_id_audio"]
+            )
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{title}'
             res["title"] = ptitle
@@ -342,7 +397,8 @@ async def getInfoEvent(sid, data: dict[str, Any]):
     """
         Generic event to get all the information provided by yt-dlp for a given url
     """
-    # Unlike other events we set the method here from the passed method in order to make this generic and flexible
+    # Unlike other events we set the method here from the passed method
+    # in order to make this generic and flexible
     res = resInit(data["method"], data.get("spinnerid"))
     try:
         url = data["url"]
@@ -404,7 +460,7 @@ def download(
         'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
     }
     # Add extension to filepath if set
-    if extension != False:
+    if extension is not False:
         ydl_opts["outtmpl"] += f".{extension}"
     # If this is audio setup for getting the best audio with the given codec
     if isAudio:
@@ -417,9 +473,9 @@ def download(
     # Otherwise...
     else:
         # Check if there's a format id, if so set the download format to that format id
-        if format_id != False:
+        if format_id is not False:
             ydl_opts['format'] = format_id
-            if format_id_audio != False:
+            if format_id_audio is not False:
                 ydl_opts['format'] += f"+{format_id_audio}"
                 print(ydl_opts['format'])
         # Otherwise if we're downloading subtitles...
@@ -436,7 +492,7 @@ def download(
         else:
             ydl_opts['format'] = None
     # If there is a proxy list url set up, set yt-dlp to use a random proxy
-    if conf["proxyListURL"] != False:
+    if conf["proxyListURL"] is not False:
         ydl_opts['proxy'] = getProxy()
     # Finally, actually download the file/s
     with YoutubeDL(ydl_opts) as ydl:
@@ -446,7 +502,7 @@ def download(
             ydl.download([url])
     # Construct and return the filepath for the downloaded file
     res = f"{title}.{ukey}"
-    if extension != False:
+    if extension is not False:
         res += f".{extension}"
     return res
 
@@ -455,7 +511,7 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
     """
     Download file directly, with random proxy if set up
     """
-    if conf["proxyListURL"] != False:
+    if conf["proxyListURL"] is not False:
         proxies = {'https': f'https://{getProxy()}'}
         with requests.get(url, proxies=proxies, stream=True, timeout=30) as r:
             r.raise_for_status()
@@ -479,7 +535,7 @@ def getInfo(url, getSubtitles: bool=False) -> dict[str, Any]:
     info: dict[str, Any] = {
         "writesubtitles": getSubtitles
     }
-    if conf["proxyListURL"] != False:
+    if conf["proxyListURL"] is not False:
         info['proxy'] = getProxy()
     with YoutubeDL({}) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -527,7 +583,9 @@ async def clean():
     while True:
         try:
             for f in os.listdir(conf["downloadsPath"]):
-                fmt = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(conf["downloadsPath"], f)))
+                fmt = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(os.path.join(conf["downloadsPath"], f))
+                )
                 if (datetime.datetime.now() - fmt).total_seconds() > 7200:
                     os.remove(os.path.join(conf["downloadsPath"], f))
         except FileNotFoundError:
@@ -538,6 +596,9 @@ async def clean():
 class RootPage(tornado.web.RequestHandler):
     def get(self):
         self.write(f'test {self.get_argument("arg")}')
+
+    def data_received(self, chunk: bytes):
+        pass
 
 class YtDlp(tornado.web.RequestHandler):
     def get(self):
@@ -552,9 +613,19 @@ class YtDlp(tornado.web.RequestHandler):
                 audio = True
             local_file_name = download(url, audio, '', None, extension=info.get("ext"))
 
-            visible_file_name = os.path.extsep.join([makeSafe(info.get("title")), info.get("ext"), ])
-            self.set_header('Content-Type', 'application/octet-stream')
-            self.set_header('Content-Disposition', f'attachment; filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}')
+            visible_file_name = os.path.extsep.join([
+                makeSafe(info.get("title")),
+                info.get("ext"),
+            ])
+            self.set_header(
+                'Content-Type',
+                'application/octet-stream'
+            )
+            self.set_header(
+                'Content-Disposition',
+                'attachment; '
+                    f'filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}'
+            )
             chunk_size = 8192
             with open(os.path.join(conf["downloadsPath"], local_file_name), 'rb') as f:
                 while (data := f.read(chunk_size)):
@@ -585,6 +656,9 @@ class YtDlp(tornado.web.RequestHandler):
             print(str(e))
             self.send_error(400)
 
+    def data_received(self, chunk: bytes):
+        pass
+
 def make_app():
     return tornado.web.Application([
         (r'/downloads/(.*)', tornado.web.StaticFileHandler, {'path': conf["downloadsPath"]}),
@@ -597,12 +671,12 @@ async def main():
     Main method
     """
     # If proxies are configured set up the refresh proxies task
-    if conf["proxyListURL"] != False:
-        task = asyncio.create_task(refreshProxies())
+    if conf["proxyListURL"] is not False:
+        asyncio.create_task(refreshProxies())
         # This is needed to get the async task running
         await asyncio.sleep(0)
     # Set up cleaning task
-    task2 = asyncio.create_task(clean())
+    asyncio.create_task(clean())
     await asyncio.sleep(0)
     # Generic tornado setup
     app = make_app()
