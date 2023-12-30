@@ -573,12 +573,12 @@ def getProxy() -> str:
     with open("proxies.txt", "r", encoding="utf-8") as f:
         return random.choice(f.readlines()).strip()
 
-async def refreshProxies():
+async def refreshProxies(proxy_list_url: str|bytes = ""):
     """
     Refresh proxies every hour
     """
     while True:
-        dlProxies(proxy_list_url=conf["proxyListURL"])
+        dlProxies(proxy_list_url=proxy_list_url)
         await asyncio.sleep(3600)
 
 async def clean(downloads_path):
@@ -682,7 +682,7 @@ async def main():
     """
     # If proxies are configured set up the refresh proxies task
     if conf["proxyListURL"] is not False:
-        asyncio.create_task(refreshProxies())
+        asyncio.create_task(refreshProxies(proxy_list_url=conf["proxyListURL"]))
         # This is needed to get the async task running
         await asyncio.sleep(0)
     # Set up cleaning task
