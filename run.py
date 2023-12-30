@@ -581,7 +581,7 @@ async def refreshProxies(proxy_list_url: str|bytes = ""):
         dlProxies(proxy_list_url=proxy_list_url)
         await asyncio.sleep(3600)
 
-async def clean(downloads_path):
+async def clean(downloads_path: str|os.PathLike):
     """
     Clean all files that are older than 2 hours out of downloads every hour
     """
