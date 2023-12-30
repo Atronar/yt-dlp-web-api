@@ -398,7 +398,7 @@ def download(
     Generic download method
     """
     # Used to avoid filename conflicts
-    ukey = str(uuid.uuid4())
+    ukey = uuid.uuid4()
     # Set the location/name of the output file
     ydl_opts: dict[str, Any] = {
         'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
