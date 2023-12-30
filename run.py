@@ -579,21 +579,26 @@ async def refreshProxies():
         dlProxies()
         await asyncio.sleep(3600)
 
-async def clean():
+async def clean(downloads_path):
     """
-    Clean all files that are older than an hour out of downloads every hour
+    Clean all files that are older than 2 hours out of downloads every hour
     """
     while True:
+        cleaned = False
+        current_time = datetime.datetime.now()
         try:
-            for f in os.listdir(conf["downloadsPath"]):
-                fmt = datetime.datetime.fromtimestamp(
-                    os.path.getmtime(os.path.join(conf["downloadsPath"], f))
+            for f in os.listdir(downloads_path):
+                file_path = os.path.join(downloads_path, f)
+                file_mtime = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(file_path)
                 )
-                if (datetime.datetime.now() - fmt).total_seconds() > 7200:
-                    os.remove(os.path.join(conf["downloadsPath"], f))
+                if (current_time - file_mtime).total_seconds() > 7200:
+                    os.remove(file_path)
+                    cleaned = True
         except FileNotFoundError:
-            os.makedirs(conf["downloadsPath"])
-        print("Cleaned!")
+            os.makedirs(downloads_path)
+        if cleaned:
+            print("Cleaned!")
         await asyncio.sleep(3600)
 
 class RootPage(tornado.web.RequestHandler):
@@ -679,7 +684,7 @@ async def main():
         # This is needed to get the async task running
         await asyncio.sleep(0)
     # Set up cleaning task
-    asyncio.create_task(clean())
+    asyncio.create_task(clean(conf["downloadsPath"]))
     await asyncio.sleep(0)
     # Generic tornado setup
     app = make_app()
