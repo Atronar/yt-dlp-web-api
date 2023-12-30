@@ -568,10 +568,8 @@ def getProxy() -> str:
     """
     Get random proxy from proxy list
     """
-    proxy = ""
     with open("proxies.txt", "r", encoding="utf-8") as f:
-        proxy = random.choice(f.read().split("\n"))
-    return proxy
+        return random.choice(f.readlines()).strip()
 
 async def refreshProxies():
     """
