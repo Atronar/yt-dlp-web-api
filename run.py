@@ -569,7 +569,7 @@ def getProxy() -> str:
     Get random proxy from proxy list
     """
     proxy = ""
-    with open("proxies.txt", "r", encoding="utg-8") as f:
+    with open("proxies.txt", "r", encoding="utf-8") as f:
         proxy = random.choice(f.read().split("\n"))
     return proxy
 
