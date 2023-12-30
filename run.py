@@ -42,27 +42,29 @@ with open(confpath, "r", encoding="utf-8") as conffile:
 if conf["bugcatcher"]:
     sentry_sdk.init(conf["bugcatcherdsn"])
 
-def dlProxies(path="proxies.txt"):
+def dlProxies(proxy_list_url: str|bytes = "", path: str|os.PathLike = "proxies.txt"):
     """
     Function to download proxies from plain url to a given path.
     this is useful for me, but if other people need to utilize a more complex method
     of downloading proxies I recommend implementing it and doing a merge request
     """
-    r = requests.get(conf["proxyListURL"], timeout=30)
-    with open(path, "w", encoding="utf-8") as f:
-        rlist = r.text.split("\n")
-        rlistfixed = []
-        for p in rlist[:-1]:
-            pl = p.replace("\n", "").replace("\r", "").split(":")
-            proxy = f"{pl[2]}:{pl[3]}@{pl[0]}:{pl[1]}"
-            rlistfixed.append(proxy)
-        f.write("\n".join(rlistfixed))
+    response = requests.get(proxy_list_url, timeout=30)
+    rlist = response.text.split("\n")
+    rlistfixed = []
+    for p in rlist[:-1]:
+        pl = p.replace("\n", "").replace("\r", "").split(":")
+        proxy = f"{pl[2]}:{pl[3]}@{pl[0]}:{pl[1]}"
+        rlistfixed.append(proxy)
+
+    with open(path, "w", encoding="utf-8") as file:
+        file.write("\n".join(rlistfixed))
+
     print("Proxies refreshed!")
 
 # If using proxy list url and there's no proxies file, download proxies at runtime
 if conf["proxyListURL"] is not False:
     if not os.path.exists("proxies.txt"):
-        dlProxies()
+        dlProxies(proxy_list_url=conf["proxyListURL"])
 
 def resInit(method, spinnerid) -> dict[str, Any]:
     """
@@ -576,7 +578,7 @@ async def refreshProxies():
     Refresh proxies every hour
     """
     while True:
-        dlProxies()
+        dlProxies(proxy_list_url=conf["proxyListURL"])
         await asyncio.sleep(3600)
 
 async def clean(downloads_path):
