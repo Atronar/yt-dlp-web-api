@@ -95,7 +95,7 @@ async def toMP3(sid, data: dict[str, Any], loop: int=0):
         if info["duration"] > conf["maxLength"]:
             raise ValueError("Video is longer than configured maximum length")
         else:
-            # Get file system safe title for video    
+            # Get file system safe title for video
             title = makeSafe(info["title"])
             # Download video as MP3 from given url and get the final title of the video
             ftitle = download(url, True, title, "mp3")
@@ -128,7 +128,7 @@ async def toMP3(sid, data: dict[str, Any], loop: int=0):
         # Get text of error
         res["details"] = str(e)
         #await sio.emit("done", res, sid)
-    
+
 #@sio.event
 async def playlist(sid, data: dict[str, Any], loop: int=0):
     """
@@ -264,7 +264,7 @@ async def clip(sid, data: dict[str, Any], loop: int=0):
         # If the directURL is set download directly
         if directURL != False:
             ititle = f'{title}.{info["ext"]}'
-            downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))      
+            downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))
         # Otherwise download the video through yt-dlp
         # If there's no format id just get the default video
         else:
@@ -385,12 +385,12 @@ async def limits(sid, data: dict[str, Any]):
 
 def download(
         url,
-        isAudio: bool, 
-        title: str, 
-        codec: str|Literal[False], 
-        languageCode: str|None = None, 
-        autoSub: bool = False, 
-        extension: str|Literal[False] = False, 
+        isAudio: bool,
+        title: str,
+        codec: str|Literal[False],
+        languageCode: str|None = None,
+        autoSub: bool = False,
+        extension: str|Literal[False] = False,
         format_id: str|Literal[False] = False,
         format_id_audio: str|Literal[False] = False
     ) -> str:
@@ -460,13 +460,13 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
         with requests.get(url, proxies=proxies, stream=True, timeout=30) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192): 
+                for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
     else:
         with requests.get(url, stream=True, timeout=30) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192): 
+                for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
 
 # Generic method to get sanitized information about the given url, with a random proxy if set up
@@ -538,7 +538,7 @@ async def clean():
 class RootPage(tornado.web.RequestHandler):
     def get(self):
         self.write(f'test {self.get_argument("arg")}')
-        
+
 class YtDlp(tornado.web.RequestHandler):
     def get(self):
         if url := self.get_argument("url", None):
@@ -546,12 +546,12 @@ class YtDlp(tornado.web.RequestHandler):
             self.write(info)
         elif url := self.get_argument("download", None):
             info = self.getInfoEvent({"url": url})
-            
+
             audio = False
             if self.get_argument("audioonly", 0)=="1":
                 audio = True
             local_file_name = download(url, audio, '', None, extension=info.get("ext"))
-            
+
             visible_file_name = os.path.extsep.join([makeSafe(info.get("title")), info.get("ext"), ])
             self.set_header('Content-Type', 'application/octet-stream')
             self.set_header('Content-Disposition', f'attachment; filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}')
@@ -562,7 +562,7 @@ class YtDlp(tornado.web.RequestHandler):
             self.finish()
         else:
             self.send_error(404)
-        
+
     def getInfoEvent(self, data: dict[str, Any]) -> dict[str, Any]:
         res = {"error": True, "details": ""}
         try:
@@ -578,12 +578,12 @@ class YtDlp(tornado.web.RequestHandler):
             return res
 
     def post(self):
-        try:    
+        try:
             data = json.loads(self.request.body)
             print(data)
         except Exception as e:
             print(str(e))
-            self.send_error(400)    
+            self.send_error(400)
 
 def make_app():
     return tornado.web.Application([
