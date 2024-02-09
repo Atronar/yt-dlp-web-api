@@ -694,4 +694,5 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
+    print(f"Started on {conf['url']}")
     asyncio.run(main())
