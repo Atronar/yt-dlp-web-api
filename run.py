@@ -1,7 +1,7 @@
 """
 
 """
-from typing import Any, Literal
+from typing import Any, Generic, Iterable, Literal, NotRequired, Required, TypeVar, TypedDict
 import json
 import asyncio
 import os
@@ -24,8 +24,19 @@ import sentry_sdk
 # README: functionality is described once per documentation in order to leave as
 # little clutter as possible
 
-conf: dict[str, Any] = {}
-""" Global configuration variable """
+class _Conf(TypedDict):
+    maxLength: int
+    maxPlaylistLength: int
+    maxGifLength: int
+    maxGifResolution: int
+    maxLengthPlaylistVideo: int
+    proxyListURL: str|Literal[False]
+    url: str
+    listeningPort: int
+    bugcatcher: bool
+    bugcatcherdsn: str
+    allowedorigins: str|list[str]
+    downloadsPath: str
 
 confpath = ".conf.json"
 """Local path to json config"""
@@ -36,7 +47,8 @@ if "docs" in os.getcwd():
 
 # Load configuration at runtime
 with open(confpath, "r", encoding="utf-8") as conffile:
-    conf = json.loads(conffile.read())
+    conf: _Conf = json.loads(conffile.read())
+    """ Global configuration variable """
 
 # If using bugcatcher such as Glitchtip/Sentry set it up
 if conf["bugcatcher"]:
@@ -50,7 +62,7 @@ def dlProxies(proxy_list_url: str|bytes = "", path: str|os.PathLike = "proxies.t
     """
     response = requests.get(proxy_list_url, timeout=30)
     rlist = response.text.split("\n")
-    rlistfixed = []
+    rlistfixed: list[str] = []
     for p in rlist[:-1]:
         pl = p.replace("\n", "").replace("\r", "").split(":")
         proxy = f"{pl[2]}:{pl[3]}@{pl[0]}:{pl[1]}"
@@ -66,28 +78,41 @@ if conf["proxyListURL"] is not False:
     if not os.path.exists("proxies.txt"):
         dlProxies(proxy_list_url=conf["proxyListURL"])
 
-def resInit(method, spinnerid) -> dict[str, Any]:
+class _ResponseDict(TypedDict, total=False):
+    method: Required[str]
+    error: Required[bool]
+    spinnerid: Required[str|None]
+
+def resInit(method: str, spinnerid: str|None) -> _ResponseDict:
     """
     Function to initialize response to client
     Takes method and spinnerid
     spinnerid is the id of the spinner object to remove on the ui, none is fine here
     """
-    res = {
+    res: _ResponseDict = {
         "method": method,
         "error": True,
         "spinnerid": spinnerid
     }
     return res
 
+class _ToMP3RequestData(TypedDict):
+    spinnerid: str|None
+    url: str
+    id3: dict[str, str|None]
 
-#@sio.event
-async def toMP3(sid, data: dict[str, Any], loop: int=0):
+class _ToMP3ResponseData(_ResponseDict, total=False):
+    link: str
+    title: str
+    details: str
+
+async def toMP3(sid: str|None, data: _ToMP3RequestData, loop: int=0) -> _ToMP3ResponseData:
     """
     Socketio event, takes the client id, a json payload and a loop count for retries
     Converts link to mp3 file
     """
     # Initialize response, if spinnerid data doesn't exist it will just set it to none
-    res = resInit("toMP3", data.get("spinnerid"))
+    res: _ToMP3ResponseData = resInit("toMP3", data.get("spinnerid")) # type: ignore
     # Try/catch loop will send error message to client on error
     try:
         # Get video url from data
@@ -99,47 +124,54 @@ async def toMP3(sid, data: dict[str, Any], loop: int=0):
         # Return an error if the video is longer than the configured maximum video length
         if info["duration"] > conf["maxLength"]:
             raise ValueError("Video is longer than configured maximum length")
-        else:
-            # Get file system safe title for video
-            title = makeSafe(info["title"])
-            # Download video as MP3 from given url and get the final title of the video
-            ftitle = download(url, True, title, "mp3")
-            # Tell the client there is no error
-            res["error"] = False
-            # Give the client the download link
-            res["link"] = f'{conf["url"]}/downloads/{ftitle}.mp3'
-            # Give the client the initial safe title just for display on the ui
-            res["title"] = title
-            # If there is id3 metadata apply this metadata to the file
-            if data["id3"] is not None:
-                # We use EasyID3 here as, well, it's easy, if you need to add more fields
-                # please read the mutagen documentation for this here:
-                # https://mutagen.readthedocs.io/en/latest/user/id3.html
-                audio = EasyID3(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
-                for key, value in data["id3"].items():
-                    if value not in ("", None):
-                        audio[key] = value
-                audio.save()
-            # Emit result to client
-            #await sio.emit("done", res, sid)
-    except OSError as e:
+
+        # Get file system safe title for video
+        title = makeSafe(info["title"])
+        # Download video as MP3 from given url and get the final title of the video
+        ftitle = download(url, True, title, "mp3")
+        # Tell the client there is no error
+        res["error"] = False
+        # Give the client the download link
+        res["link"] = f'{conf["url"]}/downloads/{ftitle}.mp3'
+        # Give the client the initial safe title just for display on the ui
+        res["title"] = title
+        # If there is id3 metadata apply this metadata to the file
+        if data["id3"] is not None:
+            # We use EasyID3 here as, well, it's easy, if you need to add more fields
+            # please read the mutagen documentation for this here:
+            # https://mutagen.readthedocs.io/en/latest/user/id3.html
+            audio = EasyID3(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
+            for key, value in data["id3"].items():
+                if value not in ("", None):
+                    audio[key] = value
+            audio.save()
+        # Emit result to client
+        return res
+    except OSError as exc:
         if loop > 0:
             # Get text of error
-            res["details"] = str(e)
-            #await sio.emit("done", res, sid)
-        else:
-            await toMP3(sid, data, loop=1)
-    except Exception as e:
+            res["details"] = str(exc)
+            return res
+        return await toMP3(sid, data, loop=1)
+    except Exception as exc:
         # Get text of error
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+        res["details"] = str(exc)
+        return res
 
-#@sio.event
-async def playlist(sid, data: dict[str, Any], loop: int=0):
+class _PlaylistRequestData(TypedDict):
+    spinnerid: str|None
+    url: str
+
+class _PlaylistResponseData(_ResponseDict, total=False):
+    link: str
+    title: str
+    details: str
+
+async def playlist(sid: str|None, data: _PlaylistRequestData, loop: int=0) -> _PlaylistResponseData:
     """
     Downloads playlist as a zip of MP3s
     """
-    res = resInit("playlist", data.get("spinnerid"))
+    res: _PlaylistResponseData = resInit("playlist", data.get("spinnerid")) # type: ignore
     try:
         purl = data["url"]
         # Get playlist info
@@ -152,49 +184,66 @@ async def playlist(sid, data: dict[str, Any], loop: int=0):
         # playlist length throw an error
         if len(info["entries"]) > conf["maxPlaylistLength"]:
             raise ValueError("Playlist is longer than configured maximum length")
-        else:
-            # Check the length of all videos in the playlist,
-            # if any are longer than the configured maximum
-            # length for playlist videos throw an error
-            for v in info["entries"]:
-                if v["duration"] > conf["maxLengthPlaylistVideo"]:
-                    raise ValueError("Video in playlist is longer than configured maximum length")
-            # Iterate through all videos on the playlist,
-            # download each one as an MP3 and then write it to the playlist zip file
-            for v in info["entries"]:
-                #TODO: make generic
-                vid = v["id"]
-                vurl = "https://www.youtube.com/watch?v=" + vid
-                title = makeSafe(v["title"])
-                ftitle = download(vurl, True, title, "mp3")
-                with zipfile.ZipFile(
-                    os.path.join(conf["downloadsPath"], f'{ptitle}.zip'),
-                    'a'
-                ) as myzip:
-                    myzip.write(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
-            res["error"] = False
-            res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
-            res["title"] = title
-            #await sio.emit("done", res, sid)
-    except OSError as e:
+
+        # Check the length of all videos in the playlist,
+        # if any are longer than the configured maximum
+        # length for playlist videos throw an error
+        for v in info["entries"]:
+            if v["duration"] > conf["maxLengthPlaylistVideo"]:
+                raise ValueError("Video in playlist is longer than configured maximum length")
+        # Iterate through all videos on the playlist,
+        # download each one as an MP3 and then write it to the playlist zip file
+        title = ""
+        for v in info["entries"]:
+            #TODO: make generic
+            vid = v["id"]
+            vurl = "https://www.youtube.com/watch?v=" + vid
+            title = makeSafe(v["title"])
+            ftitle = download(vurl, True, title, "mp3")
+            with zipfile.ZipFile(
+                os.path.join(conf["downloadsPath"], f'{ptitle}.zip'),
+                'a'
+            ) as myzip:
+                myzip.write(os.path.join(conf["downloadsPath"], f"{ftitle}.mp3"))
+        res["error"] = False
+        res["link"] = f'{conf["url"]}/downloads/{ptitle}.zip'
+        res["title"] = title
+        return res
+    except OSError as exc:
         if loop > 0:
             # Get text of error
-            res["details"] = str(e)
-            #await sio.emit("done", res, sid)
-        else:
-            await playlist(sid, data, loop=1)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+            res["details"] = str(exc)
+            return res
+        return await playlist(sid, data, loop=1)
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
 
-#@sio.event
-async def subtitles(sid, data: dict[str, Any], loop: int=0):
+class _SubtitlesRequestData(TypedDict):
+    spinnerid: str|None
+    url: str
+    step: str|int
+    languageCode: str|None
+    autoSub: bool
+
+class _SubtitlesResponseData(_ResponseDict, total=False):
+    step: int
+    link: str
+    title: str
+    select: list
+    details: str
+
+async def subtitles(
+    sid: str|None,
+    data: _SubtitlesRequestData,
+    loop: int=0
+) -> _SubtitlesResponseData:
     """
     Two step event
     1. Get list of subtitles
     2. Download chosen subtitle file
     """
-    res = resInit("subtitles", data.get("spinnerid"))
+    res: _SubtitlesResponseData = resInit("subtitles", data.get("spinnerid")) # type: ignore
     try:
         step = int(data["step"])
         url = data["url"]
@@ -216,10 +265,10 @@ async def subtitles(sid, data: dict[str, Any], loop: int=0):
             # the front end know to populate the details column with a select
             # defined by the list provided by select
             res["details"] = ""
-            #await sio.emit("done", res, sid)
+            return res
         # Step 2 of subtitles is to download the subtitles to the server
         # and provide that link to the user
-        elif step == 2:
+        if step == 2:
             # Get the selected subtitles by language code
             languageCode = data["languageCode"]
             # Check if the user wants to download autosubs
@@ -240,26 +289,38 @@ async def subtitles(sid, data: dict[str, Any], loop: int=0):
             res["error"] = False
             res["link"] = f'{conf["url"]}/downloads/{ftitle}.{languageCode}.vtt'
             res["title"] = title
-            #await sio.emit("done", res, sid)
-    except OSError as e:
+            return res
+    except OSError as exc:
         if loop > 0:
             # Get text of error
-            res["details"] = str(e)
-            #await sio.emit("done", res, sid)
-        else:
-            await subtitles(sid, data, loop=1)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+            res["details"] = str(exc)
+            return res
+        return await subtitles(sid, data, loop=1)
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
     return res
 
-#@sio.event
-async def clip(sid, data: dict[str, Any], loop: int=0):
+class _ClipRequestData(TypedDict):
+    spinnerid: str|None
+    url: str
+    directURL: NotRequired[str|bytes]
+    gif: NotRequired[bool]
+    format_id: NotRequired[str]
+    timeA: str|int
+    timeB: str|int
+
+class _ClipResponseData(_ResponseDict, total=False):
+    link: str
+    title: str
+    details: str
+
+async def clip(sid: str|None, data: _ClipRequestData, loop: int=0) -> _ClipResponseData:
     """
     Event to clip a given stream and return the clip to the user,
     the user can optionally convert this clip into a gif
     """
-    res = resInit("clip", data.get("spinnerid"))
+    res: _ClipResponseData = resInit("clip", data.get("spinnerid")) # type: ignore
     try:
         url = data["url"]
         if "list" in url:
@@ -267,15 +328,15 @@ async def clip(sid, data: dict[str, Any], loop: int=0):
         info = getInfo(url)
         # Check if directURL is in the data from the client
         # directURL defines a video url to download from directly instead of through yt-dlp
-        directURL: Literal[False]|str|bytes = False
+        directURL = None
         if "directURL" in data.keys():
             directURL = data["directURL"]
         # Check if user wants to create a gif
         gif = False
         if "gif" in data.keys():
-            gif = True
+            gif = bool(data["gif"])
         # Get the format id the user wants for downloading a given stream from a given video
-        format_id: str|Literal[False] = False
+        format_id = None
         if "format_id" in data.keys():
             format_id = data["format_id"]
         if info["duration"] > conf["maxLength"]:
@@ -290,13 +351,13 @@ async def clip(sid, data: dict[str, Any], loop: int=0):
             raise ValueError("Range is too large for gif")
         title = makeSafe(info["title"])
         # If the directURL is set download directly
-        if directURL is not False:
+        if directURL is not None:
             ititle = f'{title}.{info["ext"]}'
             downloadDirect(directURL, os.path.join(conf["downloadsPath"], ititle))
         # Otherwise download the video through yt-dlp
         # If there's no format id just get the default video
         else:
-            if format_id is not False:
+            if format_id is not None:
                 ititle = download(
                     url,
                     False,
@@ -337,24 +398,33 @@ async def clip(sid, data: dict[str, Any], loop: int=0):
             extension = "gif"
         res["link"] = f'{conf["url"]}/downloads/{title}.{cuuid}.clipped.{extension}'
         res["title"] = title
-        #await sio.emit("done", res, sid)
-    except OSError as e:
+        return res
+    except OSError as exc:
         if loop > 0:
             # Get text of error
-            res["details"] = str(e)
-            #await sio.emit("done", res, sid)
-        else:
-            await clip(sid, data, loop=1)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+            res["details"] = str(exc)
+            return res
+        return await clip(sid, data, loop=1)
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
 
-#@sio.event
-async def combine(sid, data: dict[str, Any], loop: int=0):
+class _CombineRequestData(TypedDict):
+    spinnerid: str|None
+    url: str
+    format_id: NotRequired[str]
+    format_id_audio: NotRequired[str]
+
+class _CombineResponseData(_ResponseDict, total=False):
+    link: str
+    title: str
+    details: str
+
+async def combine(sid: str|None, data: _CombineRequestData, loop: int=0) -> _CombineResponseData:
     """
     Combine audio and video streams
     """
-    res = resInit("combine", data.get("spinnerid"))
+    res: _CombineResponseData = resInit("combine", data.get("spinnerid")) # type: ignore
     try:
         curl = data["url"]
         # Get video info
@@ -363,45 +433,57 @@ async def combine(sid, data: dict[str, Any], loop: int=0):
         # The uuid is to prevent two users from accidentally overwriting each other's files
         # (very unlikely due to cleanup but still possible)
         ptitle = f'{makeSafe(info["title"])}{uuid.uuid4()}'
-        # If the number of entries is larger than the configured maximum playlist length throw an error
+        # If the number of entries is larger than the configured maximum playlist length
+        # throw an error
         if "list" in curl:
             raise ValueError("This method is for a single video")
-        else:
-            # Check the length of the video, if it's too long throw an error
-            if info["duration"] > conf["maxLength"]:
-                raise ValueError("Video is longer than configured maximum length")
-            title = download(
-                curl,
-                False,
-                ptitle,
-                False,
-                extension="mp4",
-                format_id=data["format_id"],
-                format_id_audio=data["format_id_audio"]
-            )
-            res["error"] = False
-            res["link"] = f'{conf["url"]}/downloads/{title}'
-            res["title"] = ptitle
-            #await sio.emit("done", res, sid)
-    except OSError as e:
+
+        # Check the length of the video, if it's too long throw an error
+        if info["duration"] > conf["maxLength"]:
+            raise ValueError("Video is longer than configured maximum length")
+        title = download(
+            curl,
+            False,
+            ptitle,
+            None,
+            extension="mp4",
+            format_id=data["format_id"],
+            format_id_audio=data["format_id_audio"]
+        )
+        res["error"] = False
+        res["link"] = f'{conf["url"]}/downloads/{title}'
+        res["title"] = ptitle
+        return res
+    except OSError as exc:
         if loop > 0:
             # Get text of error
-            res["details"] = str(e)
-            #await sio.emit("done", res, sid)
-        else:
-            await playlist(sid, data, loop=1)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+            res["details"] = str(exc)
+            return res
+        return await playlist(sid, data, loop=1)
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
 
-#@sio.event
-async def getInfoEvent(sid, data: dict[str, Any]):
+class _GetInfoEventRequestData(TypedDict):
+    spinnerid: str|None
+    method: str
+    url: str
+
+class _GetInfoEventResponseData(_ResponseDict, total=False):
+    link: str
+    title: str
+    select: Any
+    ext: str
+    info: Any
+    details: str
+
+async def getInfoEvent(sid: str|None, data: _GetInfoEventRequestData) -> _GetInfoEventResponseData:
     """
         Generic event to get all the information provided by yt-dlp for a given url
     """
     # Unlike other events we set the method here from the passed method
     # in order to make this generic and flexible
-    res = resInit(data["method"], data.get("spinnerid"))
+    res: _GetInfoEventResponseData = resInit(data["method"], data.get("spinnerid")) # type: ignore
     try:
         url = data["url"]
         if "list" in url:
@@ -415,17 +497,27 @@ async def getInfoEvent(sid, data: dict[str, Any]):
         res["error"] = False
         res["title"] = title
         res["info"] = info
-        #await sio.emit("done", res, sid)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+        return res
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
 
-#@sio.event
-async def limits(sid, data: dict[str, Any]):
+class _LimitsRequestData(TypedDict):
+    spinnerid: str|None
+
+class _Limit(TypedDict):
+    limitid: str
+    limitvalue: int
+
+class _LimitsResponseData(_ResponseDict, total=False):
+    limits: list[_Limit]
+    details: str
+
+async def limits(sid: str|None, data: _LimitsRequestData) -> _LimitsResponseData:
     """
     Get set limits of server for display in UI
     """
-    res = resInit("limits", data.get("spinnerid"))
+    res: _LimitsResponseData = resInit("limits", data.get("spinnerid")) # type: ignore
     try:
         _limits = [
             "maxLength",
@@ -436,21 +528,44 @@ async def limits(sid, data: dict[str, Any]):
         ]
         res["limits"] = [{"limitid": limit, "limitvalue": conf[limit]} for limit in _limits]
         res["error"] = False
-        #await sio.emit("done", res, sid)
-    except Exception as e:
-        res["details"] = str(e)
-        #await sio.emit("done", res, sid)
+        return res
+    except Exception as exc:
+        res["details"] = str(exc)
+        return res
+
+_PostprocessorName = TypeVar("_PostprocessorName", bound=str)
+
+class _BasePostprocessorData(Generic[_PostprocessorName], TypedDict):
+    key: _PostprocessorName
+
+class _FFmpegExtractAudioPostprocessorData(
+    _BasePostprocessorData[Literal['FFmpegExtractAudio']],
+    total=False
+):
+    preferredcodec: str|None
+    preferredquality: str|int|float|None
+
+_PostprocessorData = _BasePostprocessorData | _FFmpegExtractAudioPostprocessorData
+
+class _YdlOptsData(TypedDict, total=False):
+    format: str|None
+    outtmpl: str
+    writesubtitles: bool
+    writeautomaticsub: bool
+    subtitleslangs: Iterable[str]|None
+    proxy: str|None
+    postprocessors: list[_PostprocessorData]
 
 def download(
-        url,
+        url: str,
         isAudio: bool,
         title: str,
-        codec: str|Literal[False],
+        codec: str|None,
         languageCode: str|None = None,
         autoSub: bool = False,
-        extension: str|Literal[False] = False,
-        format_id: str|Literal[False] = False,
-        format_id_audio: str|Literal[False] = False
+        extension: str|None = None,
+        format_id: str|None = None,
+        format_id_audio: str|None = None
     ) -> str:
     """
     Generic download method
@@ -458,11 +573,11 @@ def download(
     # Used to avoid filename conflicts
     ukey = uuid.uuid4()
     # Set the location/name of the output file
-    ydl_opts: dict[str, Any] = {
+    ydl_opts: _YdlOptsData = {
         'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
     }
     # Add extension to filepath if set
-    if extension is not False:
+    if extension is not None:
         ydl_opts["outtmpl"] += f".{extension}"
     # If this is audio setup for getting the best audio with the given codec
     if isAudio:
@@ -475,9 +590,9 @@ def download(
     # Otherwise...
     else:
         # Check if there's a format id, if so set the download format to that format id
-        if format_id is not False:
+        if format_id is not None:
             ydl_opts['format'] = format_id
-            if format_id_audio is not False:
+            if format_id_audio is not None:
                 ydl_opts['format'] += f"+{format_id_audio}"
                 print(ydl_opts['format'])
         # Otherwise if we're downloading subtitles...
@@ -485,10 +600,10 @@ def download(
             # Set up to write the subtitles to disk
             ydl_opts["writesubtitles"] = True
             # Further settings to write subtitles
-            ydl_opts['subtitle'] = f'--write-sub --sub-lang {languageCode}'
+            if languageCode:
+                ydl_opts['subtitleslangs'] = languageCode.split(',')
             # If the user wants to download auto subtitles set the subtitle field to do so
-            if autoSub:
-                ydl_opts['subtitle'] = f'--write-auto-sub {ydl_opts["subtitle"]}'
+            ydl_opts['writeautomaticsub'] = autoSub
             ydl_opts['format'] = "worst"
         # Otherwise just download the best video+audio
         else:
@@ -504,7 +619,7 @@ def download(
             ydl.download([url])
     # Construct and return the filepath for the downloaded file
     res = f"{title}.{ukey}"
-    if extension is not False:
+    if extension is not None:
         res += f".{extension}"
     return res
 
@@ -515,21 +630,21 @@ def downloadDirect(url: str|bytes, filename: str|bytes|os.PathLike):
     """
     if conf["proxyListURL"] is not False:
         proxies = {'https': f'https://{getProxy()}'}
-        with requests.get(url, proxies=proxies, stream=True, timeout=30) as r:
-            r.raise_for_status()
-            with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        with requests.get(url, proxies=proxies, stream=True, timeout=30) as resp:
+            resp.raise_for_status()
+            with open(filename, 'wb') as file:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    file.write(chunk)
     else:
-        with requests.get(url, stream=True, timeout=30) as r:
-            r.raise_for_status()
-            with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        with requests.get(url, stream=True, timeout=30) as resp:
+            resp.raise_for_status()
+            with open(filename, 'wb') as file:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    file.write(chunk)
 
 # Generic method to get sanitized information about the given url, with a random proxy if set up
 # Try to write subtitles if requested
-def getInfo(url, getSubtitles: bool=False) -> dict[str, Any]:
+def getInfo(url: str, getSubtitles: bool=False) -> dict[str, Any]:
     """
     Generic method to get sanitized information about the given url, with a random proxy if set up
     Try to write subtitles if requested
@@ -570,8 +685,8 @@ def getProxy() -> str:
     """
     Get random proxy from proxy list
     """
-    with open("proxies.txt", "r", encoding="utf-8") as f:
-        return random.choice(f.readlines()).strip()
+    with open("proxies.txt", "r", encoding="utf-8") as file:
+        return random.choice(file.readlines()).strip()
 
 async def refreshProxies(proxy_list_url: str|bytes = ""):
     """
@@ -589,8 +704,8 @@ async def clean(downloads_path: str|os.PathLike):
         cleaned = False
         current_time = datetime.datetime.now()
         try:
-            for f in os.listdir(downloads_path):
-                file_path = os.path.join(downloads_path, f)
+            for filename in os.listdir(downloads_path):
+                file_path = os.path.join(downloads_path, filename)
                 file_mtime = datetime.datetime.fromtimestamp(
                     os.path.getmtime(file_path)
                 )
@@ -604,66 +719,90 @@ async def clean(downloads_path: str|os.PathLike):
         await asyncio.sleep(3600)
 
 class RootPage(tornado.web.RequestHandler):
-    def get(self):
+    async def get(self):
         self.write(f'test {self.get_argument("arg")}')
 
     def data_received(self, chunk: bytes):
         pass
 
+class _InfoDataDict(TypedDict):
+    url: str
+
+class _InfoEventDict(TypedDict):
+    error: bool
+    details: str
+    title: NotRequired[str]
+    ext: NotRequired[str]
+    info: NotRequired[dict[str, Any]]
+
 class YtDlp(tornado.web.RequestHandler):
-    def get(self):
+    async def get(self):
         if url := self.get_argument("url", None):
-            info = self.getInfoEvent({"url": url})
-            self.write(info)
+            info = await self.getInfoEvent({"url": url})
+            self.write(dict(info))
         elif url := self.get_argument("download", None):
-            info = self.getInfoEvent({"url": url})
+            info = await self.getInfoEvent({"url": url})
 
-            audio = False
-            if self.get_argument("audioonly", 0)=="1":
-                audio = True
-            local_file_name = download(url, audio, '', None, extension=info.get("ext"))
+            if not info.get('error'):
+                audio = False
+                if self.get_argument("audioonly", "0")=="1":
+                    audio = True
+                local_file_name = download(url, audio, '', None, extension=info.get("ext"))
 
-            visible_file_name = os.path.extsep.join([
-                makeSafe(info.get("title")),
-                info.get("ext"),
-            ])
-            self.set_header(
-                'Content-Type',
-                'application/octet-stream'
-            )
-            self.set_header(
-                'Content-Disposition',
-                'attachment; '
-                    f'filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}'
-            )
-            chunk_size = 8192
-            with open(os.path.join(conf["downloadsPath"], local_file_name), 'rb') as f:
-                while (data := f.read(chunk_size)):
-                    self.write(data)
+                visible_file_name = os.path.extsep.join([
+                    makeSafe(info.get("title", "")),
+                    info.get("ext", ""),
+                ])
+                self.set_header(
+                    'Content-Type',
+                    'application/octet-stream'
+                )
+                self.set_header(
+                    'Content-Disposition',
+                    'attachment; '
+                        f'filename*=UTF-8\'\'{tornado.escape.url_escape(visible_file_name, False)}'
+                )
+                chunk_size = 8192
+                with open(os.path.join(conf["downloadsPath"], local_file_name), 'rb') as file:
+                    while (data := file.read(chunk_size)):
+                        self.write(data)
+            else:
+                self.write(info.get('details'))
             self.finish()
         else:
             self.send_error(404)
 
-    def getInfoEvent(self, data: dict[str, Any]) -> dict[str, Any]:
-        res = {"error": True, "details": ""}
+    async def getInfoEvent(self, data: _InfoDataDict):
+        res: _InfoEventDict = {"error": True, "details": ""}
         try:
+            res["error"] = False
             url = data["url"]
             info = getInfo(url)
             res["title"] = makeSafe(info["title"])
             res["ext"] = info.get("ext", "")
-            res["error"] = False
             res["info"] = info
             return res
-        except Exception as e:
-            res["details"] = str(e)
+        except Exception as exc:
+            res["details"] = str(exc)
             return res
 
-    def post(self):
+    async def post(self):
         try:
-            data = json.loads(self.request.body)
+            data: dict = json.loads(self.request.body).get('data', {})
+
+            url = data.get('url', "")
+            title = data.get('title', "")
+            ukey = uuid.uuid4()
+
+            ydl_opts = {
+                'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
             print(data)
-        except Exception as e:
-            print(str(e))
+        except Exception as exc:
+            print(str(exc))
             self.send_error(400)
 
     def data_received(self, chunk: bytes):
