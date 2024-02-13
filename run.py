@@ -4,6 +4,7 @@
 from typing import Any, Generic, Iterable, Literal, NotRequired, Required, TypeVar, TypedDict
 import json
 import asyncio
+import hashlib
 import os
 import random
 import uuid
@@ -571,7 +572,7 @@ def download(
     Generic download method
     """
     # Used to avoid filename conflicts
-    ukey = uuid.uuid4()
+    ukey = hashlib.md5(url.encode()).hexdigest()
     # Set the location/name of the output file
     ydl_opts: _YdlOptsData = {
         'outtmpl': os.path.join(conf["downloadsPath"], f"{title}.{ukey}")
